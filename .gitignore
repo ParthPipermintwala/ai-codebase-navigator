@@ -43,3 +43,41 @@ package-lock.json
 
 # optional
 *.tsbuildinfo
+
+# monorepo package caches / generated folders
+client/node_modules/
+backend/node_modules/
+client/dist/
+backend/dist/
+backend/build/
+
+# framework/tooling cache
+.vite/
+.eslintcache
+.turbo/
+
+# runtime temp files
+*.pid
+*.seed
+*.pid.lock
+*.tmp
+*.temp
+tmp/
+temp/
+
+# local databases and state
+*.sqlite
+*.sqlite3
+
+# environment files in subprojects
+client/.env
+client/.env.local
+client/.env.*.local
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# keep sample env files versioned
+!.env.example
+!client/.env.example
+!backend/.env.example

@@ -254,6 +254,9 @@ const analyzeRepository = async (req, res) => {
 
     const { structure, created_at, ...safeRepositoryRow } = repositoryRow;
     const responsePayload = {
+      repoId: String(safeRepositoryRow.id),
+      message: "Repository analyzed successfully",
+      remaining: "unlimited",
       ...safeRepositoryRow,
     };
 
@@ -272,7 +275,7 @@ const analyzeRepository = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      error: message,
+      message,
     });
   }
 };
@@ -283,7 +286,7 @@ const getRepository = async (req, res) => {
     if (!repoId) {
       return res.status(400).json({
         success: false,
-        error: "repoId is required",
+        message: "repoId is required",
       });
     }
 
@@ -301,7 +304,7 @@ const getRepository = async (req, res) => {
     if (!repository) {
       return res.status(404).json({
         success: false,
-        error: "Repository not found",
+        message: "Repository not found",
       });
     }
 
@@ -325,7 +328,7 @@ const getRepository = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      error: message,
+      message,
     });
   }
 };
@@ -336,7 +339,7 @@ const getUserRepositories = async (req, res) => {
     if (!userId) {
       return res.status(400).json({
         success: false,
-        error: "userId is required",
+        message: "userId is required",
       });
     }
 
@@ -371,7 +374,7 @@ const getUserRepositories = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      error: message,
+      message,
     });
   }
 };
@@ -383,7 +386,7 @@ const getRepoMap = async (req, res) => {
     if (!repoId) {
       return res.status(400).json({
         success: false,
-        error: "repoId is required",
+        message: "repoId is required",
       });
     }
 
@@ -397,7 +400,7 @@ const getRepoMap = async (req, res) => {
     if (!repository) {
       return res.status(404).json({
         success: false,
-        error: "Repository not found",
+        message: "Repository not found",
       });
     }
 
@@ -419,7 +422,7 @@ const getRepoMap = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      error: message,
+      message,
     });
   }
 };
@@ -431,7 +434,7 @@ const getDependencies = async (req, res) => {
     if (!repoId) {
       return res.status(400).json({
         success: false,
-        error: "repoId is required",
+        message: "repoId is required",
       });
     }
 
@@ -445,7 +448,7 @@ const getDependencies = async (req, res) => {
     if (!repository) {
       return res.status(404).json({
         success: false,
-        error: "Repository not found",
+        message: "Repository not found",
       });
     }
 
@@ -466,7 +469,7 @@ const getDependencies = async (req, res) => {
 
     return res.status(statusCode).json({
       success: false,
-      error: message,
+      message,
     });
   }
 };

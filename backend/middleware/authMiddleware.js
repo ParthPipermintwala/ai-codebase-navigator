@@ -1,49 +1,45 @@
-import supabase from "../config/supabase.js";
+import jwt from 'jsonwebtoken';
+import supabase from '../config/supabase.js';
 
-const extractToken = (req) => {
-  const authHeader = req.headers?.authorization || "";
-  if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
-    return authHeader.slice(7).trim();
-  }
+const JWT_SECRET = process.env.JWT_SECRET;
 
-  const cookieToken = req.cookies?.access_token || req.cookies?.token;
-  if (typeof cookieToken === "string" && cookieToken.trim()) {
-    return cookieToken.trim();
-  }
+if (!JWT_SECRET) {
+  throw new Error('Missing JWT_SECRET environment variable');
+}
 
-  return null;
-};
-
-const authMiddleware = async (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   try {
-    const token = extractToken(req);
+    const token = req.cookies.authToken;
+
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Unauthorized",
-      });
+      return res.status(401).json({ message: 'No token provided' });
     }
 
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user?.id) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Check if user exists
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', decoded.userId)
+      .single();
+
+    if (error || !user) {
+      return res.status(401).json({ message: 'Invalid token' });
     }
 
-    req.user = {
-      id: data.user.id,
-      email: data.user.email || null,
-    };
-
-    return next();
-  } catch {
-    return res.status(500).json({
-      success: false,
-      error: "Authentication failed",
-    });
+    // Attach user to request
+    req.user = decoded;
+    next();
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token expired' });
+    }
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
-
-export default authMiddleware;
