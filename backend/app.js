@@ -1,25 +1,22 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import repoRouter from "./routes/repoRoutes.js";
 
 const app = express();
-
+app.disable("x-powered-by");
+app.use(cors());
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// app.use("/auth", directoryRoutes);
-// app.use("/repo", fileRoutes);
-// app.use("/chat", authRoutes);
+app.use("/api/repo", repoRouter);
 
 app.use((err, req, res, next) => {
-  res.status(err.status || 500).json({ message: "something went wrong" });
+  const statusCode = err.statusCode || err.status || 500;
+  res.status(statusCode).json({
+    message: err.message || "Something went wrong",
+  });
 });
-
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-  }),
-);
 
 export default app;
