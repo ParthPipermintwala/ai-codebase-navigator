@@ -13,11 +13,20 @@
   "license": "MIT",
   "author": "parth pipermintwala and darshan modi",
   "type": "module",
-  "main": "app.js",
+  "main": "backend/server.js",
   "scripts": {
-    "test": "node --watch app.js "
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "test": "node backend/server.js"
   },
   "dependencies": {
-    "express": "^5.2.1"
+    "@pinecone-database/pinecone": "^7.1.0",
+    "@supabase/supabase-js": "^2.101.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^5.2.1",
+    "pg": "^8.20.0",
+    "redis": "^5.11.0"
   }
 }
