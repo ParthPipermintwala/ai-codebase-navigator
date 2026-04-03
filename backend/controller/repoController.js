@@ -19,8 +19,12 @@ import {
   bulkInsertIssues,
   getRepositoryById,
   getRepositoriesByUserId,
+  getRepositoryStructureById,
+  getRepositoryDependencyDataById,
 } from "../services/supabaseService.js";
 import { generateEmbedding, upsertVectors } from "../services/vectorService.js";
+import { buildRepositoryMap } from "../services/mapService.js";
+import { extractDependenciesFromRepository } from "../services/dependencyService.js";
 
 const CACHE_TTL_SECONDS = 60 * 60;
 const MAX_FILES = 30;
@@ -372,4 +376,105 @@ const getUserRepositories = async (req, res) => {
   }
 };
 
-export { analyzeRepository, getRepository, getUserRepositories };
+const getRepoMap = async (req, res) => {
+  try {
+    const { repoId } = req.params || {};
+
+    if (!repoId) {
+      return res.status(400).json({
+        success: false,
+        error: "repoId is required",
+      });
+    }
+
+    const cacheKey = `repo:map:${repoId}`;
+    const cached = await getCachedJson(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
+    const repository = await getRepositoryStructureById(repoId);
+    if (!repository) {
+      return res.status(404).json({
+        success: false,
+        error: "Repository not found",
+      });
+    }
+
+    const map = buildRepositoryMap(repository.structure);
+    await setCachedJson(cacheKey, map, CACHE_TTL_SECONDS);
+
+    return res.status(200).json(map);
+  } catch (error) {
+    const message = error?.message || "Failed to build repository map";
+    const statusCode = Number(error?.statusCode) || 500;
+
+    console.error("[getRepoMap] error", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      repoId: req?.params?.repoId,
+      userId: req?.user?.id,
+    });
+
+    return res.status(statusCode).json({
+      success: false,
+      error: message,
+    });
+  }
+};
+
+const getDependencies = async (req, res) => {
+  try {
+    const { repoId } = req.params || {};
+
+    if (!repoId) {
+      return res.status(400).json({
+        success: false,
+        error: "repoId is required",
+      });
+    }
+
+    const cacheKey = `repo:deps:${repoId}`;
+    const cached = await getCachedJson(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+
+    const repository = await getRepositoryDependencyDataById(repoId);
+    if (!repository) {
+      return res.status(404).json({
+        success: false,
+        error: "Repository not found",
+      });
+    }
+
+    const responsePayload = await extractDependenciesFromRepository(repository);
+    await setCachedJson(cacheKey, responsePayload, CACHE_TTL_SECONDS);
+
+    return res.status(200).json(responsePayload);
+  } catch (error) {
+    const message = error?.message || "Failed to extract dependencies";
+    const statusCode = Number(error?.statusCode) || 500;
+
+    console.error("[getDependencies] error", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      repoId: req?.params?.repoId,
+    });
+
+    return res.status(statusCode).json({
+      success: false,
+      error: message,
+    });
+  }
+};
+
+export {
+  analyzeRepository,
+  getRepository,
+  getUserRepositories,
+  getRepoMap,
+  getDependencies,
+};

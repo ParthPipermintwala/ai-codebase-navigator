@@ -125,6 +125,54 @@ const getRepositoriesByUserId = async (userId) => {
   return Array.isArray(data) ? data : [];
 };
 
+const getRepositoryStructureById = async (repoId) => {
+  const { data, error } = await supabase
+    .from("repositories")
+    .select("structure")
+    .eq("id", repoId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+
+    throw new HttpError(
+      `Supabase repository structure fetch failed: ${error.message}`,
+      500,
+    );
+  }
+
+  return data;
+};
+
+const getRepositoryDependencyDataById = async (repoId) => {
+  if (!repoId || typeof repoId !== "string" || !repoId.trim()) {
+    throw new HttpError("Invalid repoId provided", 400);
+  }
+
+  const query = supabase
+    .from("repositories")
+    .select("owner, name, default_branch, structure, tech_stack")
+    .eq("id", repoId);
+
+  const { data, error } = await query.single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+
+    const message = error?.message || "Unknown error";
+    throw new HttpError(
+      `Supabase repository dependency fetch failed: ${message} (repoId: ${repoId})`,
+      500,
+    );
+  }
+
+  return data;
+};
+
 export {
   insertRepository,
   bulkInsertContributors,
@@ -132,4 +180,6 @@ export {
   bulkInsertIssues,
   getRepositoryById,
   getRepositoriesByUserId,
+  getRepositoryStructureById,
+  getRepositoryDependencyDataById,
 };
