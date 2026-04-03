@@ -1,0 +1,23 @@
+{
+  "name": "ai-code-nav",
+  "version": "1.0.0",
+  "description": "charusat hackathon",
+  "homepage": "https://github.com/ParthPipermintwala/ai-codebase-navigator#readme",
+  "bugs": {
+    "url": "https://github.com/ParthPipermintwala/ai-codebase-navigator/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ParthPipermintwala/ai-codebase-navigator.git"
+  },
+  "license": "MIT",
+  "author": "parth pipermintwala and darshan modi",
+  "type": "module",
+  "main": "app.js",
+  "scripts": {
+    "test": "node --watch app.js "
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
