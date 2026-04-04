@@ -6,8 +6,12 @@ import { getRepoBugs } from "@/services/api";
 import { getRepoId } from "@/utils/storage";
 import {
   AlertCircle,
+  AlertTriangle,
   Bug,
   CheckCircle2,
+  KeyRound,
+  Lock,
+  LockKeyhole,
   Filter,
   Loader2,
   RefreshCw,
@@ -74,11 +78,69 @@ const typeLabels: Record<string, string> = {
   security: "Security",
   "environment-exposure": "Environment Exposure",
   "secret-exposure": "Secret Exposure",
+  "jwt-secret-exposure": "JWT Secret Exposure",
+  "password-disclosure": "Password Disclosure",
   "information-disclosure": "Information Disclosure",
   "error-handling": "Error Handling",
   logic: "Logic",
   maintenance: "Maintenance",
   repo_issue: "Open Issue",
+};
+
+const typeMeta: Record<
+  string,
+  { className: string; accentClassName: string; icon: React.ElementType }
+> = {
+  security: {
+    className: "border-red-500/30 bg-red-500/10 text-red-300",
+    accentClassName: "bg-red-400",
+    icon: ShieldAlert,
+  },
+  "environment-exposure": {
+    className: "border-orange-500/30 bg-orange-500/10 text-orange-300",
+    accentClassName: "bg-orange-400",
+    icon: AlertTriangle,
+  },
+  "secret-exposure": {
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-300",
+    accentClassName: "bg-amber-400",
+    icon: KeyRound,
+  },
+  "jwt-secret-exposure": {
+    className: "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300",
+    accentClassName: "bg-fuchsia-400",
+    icon: LockKeyhole,
+  },
+  "password-disclosure": {
+    className: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+    accentClassName: "bg-rose-400",
+    icon: Lock,
+  },
+  "information-disclosure": {
+    className: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+    accentClassName: "bg-sky-400",
+    icon: AlertCircle,
+  },
+  "error-handling": {
+    className: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
+    accentClassName: "bg-yellow-400",
+    icon: AlertTriangle,
+  },
+  logic: {
+    className: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
+    accentClassName: "bg-cyan-400",
+    icon: CheckCircle2,
+  },
+  maintenance: {
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+    accentClassName: "bg-emerald-400",
+    icon: Bug,
+  },
+  repo_issue: {
+    className: "border-violet-500/30 bg-violet-500/10 text-violet-300",
+    accentClassName: "bg-violet-400",
+    icon: ExternalLink,
+  },
 };
 
 const formatLine = (line: number | null) => (line ? `Line ${line}` : "Line not available");
@@ -190,47 +252,49 @@ const BugDetector = () => {
   const hasFindings = findings.length > 0;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
+    <div className="mx-auto max-w-7xl space-y-4 overflow-x-hidden p-4 sm:space-y-5 sm:p-5 lg:p-6">
       <PageHeader
         title="Bug Detector"
         description="Scans real repository files and open GitHub issue signals to surface likely bugs, code risks, and unstable paths."
       >
-        <button
-          type="button"
-          onClick={() => setIncludeTestFixture((current) => !current)}
-          className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
-            includeTestFixture
-              ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-              : "border-border/70 bg-card text-foreground hover:bg-secondary"
-          }`}
-        >
-          <TestTube className="h-4 w-4" />
-          {includeTestFixture ? "Test fixture on" : "Enable test fixture"}
-        </button>
-        <button
-          type="button"
-          onClick={loadBugs}
-          className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Rescan
-        </button>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <button
+            type="button"
+            onClick={() => setIncludeTestFixture((current) => !current)}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors sm:w-auto ${
+              includeTestFixture
+                ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                : "border-border/70 bg-card text-foreground hover:bg-secondary"
+            }`}
+          >
+            <TestTube className="h-4 w-4" />
+            {includeTestFixture ? "Test fixture on" : "Enable test fixture"}
+          </button>
+          <button
+            type="button"
+            onClick={loadBugs}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary sm:w-auto"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Rescan
+          </button>
+        </div>
       </PageHeader>
 
       <motion.section
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl"
+        className="relative w-full min-w-0 overflow-hidden rounded-3xl border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--destructive)/0.12),transparent_28%),radial-gradient(circle_at_bottom_left,hsl(173_80%_50%/0.12),transparent_35%)]" />
-        <div className="relative grid gap-6 p-6 lg:grid-cols-[1.1fr_0.9fr] lg:p-8">
-          <div className="space-y-4">
+        <div className="relative grid min-w-0 gap-5 p-4 md:p-5 2xl:grid-cols-[1.28fr_0.72fr] 2xl:p-6">
+          <div className="min-w-0 space-y-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3 py-1 text-xs font-medium text-rose-300">
               <Bug className="h-3.5 w-3.5" />
               Real repository scan
             </div>
-            <div className="max-w-2xl space-y-3">
-              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+            <div className="max-w-2xl space-y-2.5">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl xl:text-5xl">
                 Find likely bugs before they ship
               </h1>
               <p className="text-base leading-7 text-muted-foreground sm:text-lg">
@@ -242,9 +306,9 @@ const BugDetector = () => {
             </div>
 
             {report?.repository && (
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-background/80 px-4 py-3 text-sm text-muted-foreground">
+              <div className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-background/80 px-4 py-3 text-sm text-muted-foreground">
                 <Files className="h-4 w-4 text-primary" />
-                {report.repository.owner}/{report.repository.name}
+                <span className="break-all font-medium text-foreground">{report.repository.owner}/{report.repository.name}</span>
                 <span className="rounded-full border border-border/60 bg-secondary/70 px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                   {report.repository.branch || "main"}
                 </span>
@@ -257,7 +321,7 @@ const BugDetector = () => {
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-1">
             {[
               { label: "Files scanned", value: summary.scannedFiles, icon: Files },
               { label: "Findings", value: summary.totalFindings, icon: ShieldAlert },
@@ -308,21 +372,21 @@ const BugDetector = () => {
       )}
 
       {!loading && !error && report && (
-        <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border/60 bg-card p-5">
+        <div className="grid min-w-0 gap-6 2xl:grid-cols-[1.35fr_0.65fr]">
+          <div className="min-w-0 space-y-4">
+            <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Severity filter</p>
                   <h2 className="mt-1 text-lg font-semibold text-foreground">Focus on the right risk level</h2>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex max-w-full flex-wrap gap-2">
                   {(["all", "high", "medium", "low"] as SeverityFilter[]).map((level) => (
                     <button
                       key={level}
                       type="button"
                       onClick={() => setFilter(level)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
                         filter === level
                           ? "border-primary/30 bg-primary/10 text-primary"
                           : "border-border/60 bg-secondary/50 text-muted-foreground hover:text-foreground"
@@ -336,27 +400,30 @@ const BugDetector = () => {
             </div>
 
             {hasFindings ? (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 {findings.map((finding, index) => {
                   const severity = severityMeta[finding.severity] || severityMeta.medium;
+                  const typeStyle = typeMeta[finding.type] || typeMeta.security;
+                  const TypeIcon = typeStyle.icon;
                   return (
                     <motion.article
                       key={finding.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03 }}
-                      className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm"
+                      className="overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-b from-card to-card/70 shadow-sm transition-all hover:border-primary/20"
                     >
-                      <div className="border-b border-border/60 px-5 py-4">
+                      <div className="border-b border-border/60 px-4 py-4 sm:px-5">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${severity.className}`}>
                             {severity.label}
                           </span>
-                          <span className="rounded-full border border-border/60 bg-secondary/60 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${typeStyle.className}`}>
+                            <TypeIcon className="h-3.5 w-3.5" />
                             {typeLabels[finding.type] || finding.type}
                           </span>
                           {finding.filePath && (
-                            <span className="rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[11px] text-muted-foreground">
+                            <span title={finding.filePath} className="max-w-full rounded-full border border-border/60 bg-background/80 px-2.5 py-1 text-[11px] text-muted-foreground break-all">
                               {finding.filePath}
                             </span>
                           )}
@@ -367,9 +434,14 @@ const BugDetector = () => {
                           )}
                         </div>
 
-                        <h3 className="mt-3 text-lg font-semibold text-foreground">{finding.title}</h3>
-                        <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-primary/90">
-                          Exact location: {finding.filePath || "Unknown file"}
+                        <h3 className="mt-3 flex items-start gap-2 text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                          <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background ${typeStyle.className}`}>
+                            <TypeIcon className="h-3.5 w-3.5" />
+                          </span>
+                          <span>{finding.title}</span>
+                        </h3>
+                        <p className="mt-2 break-all font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-primary/90 sm:text-xs">
+                          Exact location: {finding.filePath || "unknown-file"}
                           {finding.line ? `:${finding.line}` : ""}
                         </p>
                         <div className="mt-2">
@@ -377,11 +449,11 @@ const BugDetector = () => {
                         </div>
                       </div>
 
-                      <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
-                        <div className="space-y-3">
+                      <div className="grid min-w-0 gap-4 p-4 sm:p-5 xl:grid-cols-[1.3fr_0.7fr]">
+                        <div className="min-w-0 space-y-3">
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Evidence</p>
-                            <p className="mt-1 rounded-xl border border-border/60 bg-background/80 px-3 py-2 font-mono text-[12px] leading-6 text-foreground">
+                            <p className="mt-1 break-all whitespace-pre-wrap rounded-xl border border-border/60 bg-background/80 px-3 py-2 font-mono text-[12px] leading-6 text-foreground">
                               {finding.evidence || "No direct evidence captured."}
                             </p>
                           </div>
@@ -389,14 +461,14 @@ const BugDetector = () => {
                           {finding.snippet && (
                             <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Snippet</p>
-                              <pre className="mt-1 overflow-x-auto rounded-xl border border-border/60 bg-neutral-950/90 p-3 text-[12px] leading-6 text-neutral-200">
+                              <pre className="mt-1 max-h-56 overflow-auto rounded-xl border border-border/60 bg-neutral-950/90 p-3 text-[12px] leading-6 text-neutral-200">
                                 <code>{finding.snippet}</code>
                               </pre>
                             </div>
                           )}
                         </div>
 
-                        <div className="space-y-3 rounded-2xl border border-border/60 bg-background/80 p-4">
+                        <div className="min-w-0 space-y-3 rounded-2xl border border-border/60 bg-background/80 p-4">
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Confidence</p>
                             <p className="mt-1 text-sm font-medium capitalize text-foreground">{finding.confidence}</p>
@@ -405,7 +477,7 @@ const BugDetector = () => {
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendation</p>
                             <div className="mt-1 space-y-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
                               {finding.recommendation.includes("\n") ? (
-                                <pre className="text-xs leading-6 text-emerald-200 font-mono overflow-x-auto">
+                                <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 text-emerald-200">
                                   {finding.recommendation}
                                 </pre>
                               ) : (
@@ -438,14 +510,14 @@ const BugDetector = () => {
                 })}
               </div>
             ) : (
-              <div className="rounded-2xl border border-border/60 bg-card p-6 text-sm text-muted-foreground">
+              <div className="rounded-2xl border border-border/60 bg-gradient-to-br from-card to-background p-5 sm:p-6 text-sm text-muted-foreground">
                 No likely bugs were found in the current scan. That does not guarantee the code is bug-free, but it means the current heuristics and open issue signals did not surface a concrete high-confidence problem.
               </div>
             )}
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <div className="min-w-0 space-y-4 2xl:sticky 2xl:top-6 2xl:self-start">
+            <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-400">
                   <ShieldAlert className="h-5 w-5" />
@@ -457,15 +529,15 @@ const BugDetector = () => {
               </div>
 
               <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-3">
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-2.5">
                   <span className="flex items-center gap-2"><FileCode2 className="h-4 w-4 text-primary" /> Source files</span>
                   <span className="font-medium text-foreground">{summary.sourceFiles}</span>
                 </div>
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-3">
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-2.5">
                   <span className="flex items-center gap-2"><Files className="h-4 w-4 text-primary" /> Candidate files</span>
                   <span className="font-medium text-foreground">{summary.scannedFiles}</span>
                 </div>
-                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-3">
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-background/80 px-4 py-2.5">
                   <span className="flex items-center gap-2"><AlertCircle className="h-4 w-4 text-primary" /> Open issue signals</span>
                   <span className="font-medium text-foreground">{summary.issueSignals}</span>
                 </div>
@@ -473,13 +545,13 @@ const BugDetector = () => {
             </div>
 
             {Array.isArray(report.issueSignals) && report.issueSignals.length > 0 && (
-              <div className="rounded-2xl border border-border/60 bg-card p-5">
+              <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">GitHub issue signals</p>
                 <div className="mt-3 space-y-3">
                   {report.issueSignals.map((issue) => (
                     <div key={issue.number} className="rounded-xl border border-border/60 bg-background/80 p-4 text-sm">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-foreground">#{issue.number} {issue.title}</p>
+                        <p className="font-medium text-foreground break-words">#{issue.number} {issue.title}</p>
                         {issue.url && (
                           <a href={issue.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
                             <ExternalLink className="h-4 w-4" />
@@ -499,9 +571,9 @@ const BugDetector = () => {
               </div>
             )}
 
-            <div className="rounded-2xl border border-border/60 bg-card p-5">
+            <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">How it works</p>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+              <ul className="mt-3 space-y-1.5 text-sm leading-6 text-muted-foreground">
                 <li>• Reads actual repository files from the analyzed project.</li>
                 <li>• Flags risky code patterns, empty error handling, and unsafe constructs.</li>
                 <li>• Cross-checks open GitHub issues that look bug-related.</li>

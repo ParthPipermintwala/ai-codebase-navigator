@@ -1,4 +1,4 @@
-import { getIssues, getRawFileContent } from "./githubService.js";
+import { getIssues, getRawFileContent, getRepoTree } from "./githubService.js";
 
 const MAX_FILES = Number(process.env.BUG_DETECTOR_MAX_FILES || 0);
 const MAX_FINDINGS = Number(process.env.BUG_DETECTOR_MAX_FINDINGS || 0);
@@ -43,6 +43,54 @@ const normalizeStructurePaths = (structure) => {
   }
 
   return [];
+};
+
+const normalizeTreePaths = (tree) =>
+  Array.isArray(tree)
+    ? tree
+        .filter(
+          (item) => item?.type === "blob" && typeof item?.path === "string",
+        )
+        .map((item) => item.path)
+    : [];
+
+const collectScanPaths = async ({
+  structure,
+  owner,
+  repo,
+  branch,
+  githubToken,
+}) => {
+  const structurePaths = normalizeStructurePaths(structure);
+  if (structurePaths.length > 0) {
+    return {
+      paths: structurePaths,
+      source: "repository-structure",
+      structureCount: structurePaths.length,
+      treeCount: 0,
+      fallbackUsed: false,
+    };
+  }
+
+  try {
+    const treeResponse = await getRepoTree(owner, repo, branch, githubToken);
+    const treePaths = normalizeTreePaths(treeResponse?.tree);
+    return {
+      paths: treePaths,
+      source: "github-tree",
+      structureCount: 0,
+      treeCount: treePaths.length,
+      fallbackUsed: true,
+    };
+  } catch {
+    return {
+      paths: [],
+      source: "unavailable",
+      structureCount: 0,
+      treeCount: 0,
+      fallbackUsed: true,
+    };
+  }
 };
 
 const getFileExtension = (filePath) => {
@@ -387,6 +435,32 @@ const isLikelyErrorLeak = (line) => {
   );
 };
 
+const isHardcodedSecretAssignment = (line) => {
+  const text = String(line || "");
+  return /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*(?:jwt|secret|password|token|privateKey|clientSecret|cookieSecret)[A-Za-z_$\w]*\s*=\s*(['"`])[^'"`]{8,}\1/i.test(
+    text,
+  );
+};
+
+const isJwtSecretLiteral = (line) => {
+  const text = String(line || "");
+  return (
+    /\bjwt\.(sign|verify)\s*\(/i.test(text) &&
+    /(['"`])[^'"`]{8,}\1/.test(text) &&
+    !/process\.env\.|import\.meta\.env\./i.test(text)
+  );
+};
+
+const isPasswordDisclosureLine = (line) => {
+  const text = String(line || "");
+  return (
+    /\bpassword\b/i.test(text) &&
+    /(console\.(log|info|warn|error)|res\.(json|send|status)|return\s+res\.|localStorage\.setItem|sessionStorage\.setItem)/i.test(
+      text,
+    )
+  );
+};
+
 const isHardcodedMongoUriLine = (line) => {
   const text = String(line || "");
   return (
@@ -476,6 +550,63 @@ const scanJavaScriptLikeFile = (filePath, content) => {
           line: index + 1,
           recommendation:
             "Store MongoDB URI in environment variables and keep credentials out of source code and logs.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (isHardcodedSecretAssignment(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "jwt-secret-exposure",
+          severity: "high",
+          title: "Hardcoded secret value in source code",
+          description:
+            "This line appears to hardcode a sensitive value such as a JWT secret, password, token, or client secret directly in source code.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Move the secret to an environment variable or secret manager and load it at runtime instead of embedding it in code.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (isJwtSecretLiteral(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "jwt-secret-exposure",
+          severity: "high",
+          title: "JWT signing or verification uses a hardcoded secret",
+          description:
+            "This JWT call appears to use a literal secret value instead of a runtime environment variable or secret manager.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Pass JWT secrets from environment variables only, and never commit literal signing or verification secrets into source files.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (isPasswordDisclosureLine(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "password-disclosure",
+          severity: "high",
+          title: "Password may be disclosed in logs or response",
+          description:
+            "This line appears to send, log, or persist a password value where it could be exposed to users or logs.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Never log or return passwords. Use hashing for storage and ensure only non-sensitive fields are sent to the client.",
           confidence: "high",
           evidence: rawLine.trim(),
           snippet: makeSnippet(lines, index + 1),
@@ -820,7 +951,15 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
   const owner = String(repoData?.owner || "").trim();
   const repo = String(repoData?.name || "").trim();
   const branch = String(repoData?.default_branch || "main").trim() || "main";
-  const structurePaths = normalizeStructurePaths(repoData?.structure);
+
+  const scanPaths = await collectScanPaths({
+    structure: repoData?.structure,
+    owner,
+    repo,
+    branch,
+    githubToken,
+  });
+
   const maxFiles =
     Number.isFinite(Number(options?.maxFiles)) && Number(options?.maxFiles) > 0
       ? Number(options.maxFiles)
@@ -831,7 +970,7 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
       ? Number(options.maxFindings)
       : MAX_FINDINGS;
 
-  const candidateFiles = collectCandidateFiles(repoData?.structure, maxFiles);
+  const candidateFiles = collectCandidateFiles(scanPaths.paths, maxFiles);
   const includeTestFixture = Boolean(options?.includeTestFixture);
 
   const findings = [];
@@ -980,7 +1119,10 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
     source: "repository-scan",
     testFixtureEnabled: includeTestFixture,
     metadata: {
-      structureFiles: structurePaths.length,
+      structureFiles: scanPaths.structureCount,
+      treeFiles: scanPaths.treeCount,
+      fileDiscoverySource: scanPaths.source,
+      fallbackToTreeUsed: scanPaths.fallbackUsed,
       scanLimits: {
         maxFiles: maxFiles > 0 ? maxFiles : "all",
         maxFindings: maxFindings > 0 ? maxFindings : "all",
