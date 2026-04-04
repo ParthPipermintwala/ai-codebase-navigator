@@ -26,8 +26,12 @@ const Chat = () => {
       };
     } catch (err) {
       console.error(err);
+      const message =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : "Unable to fetch response. Please try again.";
       return {
-        answer: "Error fetching response",
+        answer: message,
         confidence: "low",
         type: "inferred",
         source: "inferred",

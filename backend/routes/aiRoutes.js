@@ -15,7 +15,6 @@ aiRouter.post(
 chatRouter.post(
   "/chat/:repoId",
   authMiddleware,
-  subscriptionMiddleware,
   chatWithRepo,
 );
 
