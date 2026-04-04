@@ -15,6 +15,7 @@ import Repository from "./pages/Repository";
 import RepoMap from "./pages/RepoMap";
 import Chat from "./pages/Chat";
 import Dependencies from "./pages/Dependencies";
+import BugDetector from "./pages/BugDetector";
 import Tour from "./pages/Tour";
 import Impact from "./pages/Impact";
 import Docs from "./pages/Docs";
@@ -72,6 +73,7 @@ const App = () => (
                     }
                   />
                   <Route path="/dependencies" element={<Dependencies />} />
+                  <Route path="/bugs" element={<BugDetector />} />
                   <Route
                     path="/subscription"
                     element={

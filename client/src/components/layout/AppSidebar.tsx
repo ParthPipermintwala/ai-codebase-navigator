@@ -6,6 +6,7 @@ import {
   Package,
   Compass,
   Zap,
+  Bug,
   FileText,
   Settings,
   Code2,
@@ -38,6 +39,7 @@ const mainItems = [
 
 const analysisItems = [
   { title: "Dependencies", url: "/dependencies", icon: Package },
+  { title: "Bug Detector", url: "/bugs", icon: Bug },
   { title: "Codebase Tour", url: "/tour", icon: Compass, premium: true },
   { title: "Impact Analysis", url: "/impact", icon: Zap, premium: true },
 ];

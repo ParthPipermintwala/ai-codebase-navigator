@@ -21,6 +21,7 @@ import {
   getRepositoriesByUserId,
   getRepositoryStructureById,
   getRepositoryDependencyDataById,
+  getRepositoryForAi,
 } from "../services/supabaseService.js";
 import { generateEmbedding, upsertVectors } from "../services/vectorService.js";
 import { buildRepositoryMap } from "../services/mapService.js";
@@ -29,6 +30,7 @@ import {
   generateRepoTour,
   getRepoImpactService,
 } from "../services/aiService.js";
+import { analyzeRepositoryBugs } from "../services/bugDetectorService.js";
 
 const CACHE_TTL_SECONDS = 60 * 60;
 const TOUR_CACHE_VERSION = 3;
@@ -868,6 +870,73 @@ const getRepoImpact = async (req, res) => {
   }
 };
 
+const getRepoBugs = async (req, res) => {
+  try {
+    const { repoId } = req.params || {};
+    if (!repoId) {
+      return res.status(400).json({
+        success: false,
+        message: "repoId is required",
+      });
+    }
+
+    const cacheKey = `repo:bugs:v1:${repoId}`;
+    const cached = await getCachedJson(cacheKey);
+    if (cached?.findings) {
+      return res.status(200).json({
+        success: true,
+        bugReport: cached,
+        source: "cache",
+      });
+    }
+
+    const repoData = await getRepositoryForAi(String(repoId));
+    if (!repoData) {
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
+    }
+
+    const user = repoData?.user_id
+      ? await getUserById(String(repoData.user_id))
+      : null;
+    const githubToken = String(user?.github_token || "").trim() || null;
+
+    const bugReport = await analyzeRepositoryBugs(repoData, githubToken);
+    await setCachedJson(cacheKey, bugReport, CACHE_TTL_SECONDS);
+
+    return res.status(200).json({
+      success: true,
+      bugReport,
+      source: "repository-scan",
+    });
+  } catch (error) {
+    const message = error?.message || "Failed to analyze repository bugs";
+    const normalizedMessage = String(message).toLowerCase();
+    const statusCode = normalizedMessage.includes("not found") ? 404 : Number(error?.statusCode) || 500;
+
+    console.error("[getRepoBugs] error", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      repoId: req?.params?.repoId,
+    });
+
+    if (statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
+    }
+
+    return res.status(statusCode).json({
+      success: false,
+      message,
+    });
+  }
+};
+
 export {
   analyzeRepository,
   getRepository,
@@ -876,4 +945,5 @@ export {
   getDependencies,
   getRepoTour,
   getRepoImpact,
+  getRepoBugs,
 };

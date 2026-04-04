@@ -3,6 +3,7 @@ import {
   analyzeRepository,
   getDependencies,
   getRepoImpact,
+  getRepoBugs,
   getRepoMap,
   getRepoTour,
   getRepository,
@@ -28,6 +29,7 @@ repoRouter.post(
   subscriptionMiddleware,
   getRepoImpact,
 );
+repoRouter.post("/bugs/:repoId", authMiddleware, getRepoBugs);
 repoRouter.get("/user", authMiddleware, getUserRepositories);
 repoRouter.get("/:repoId", getRepository);
 

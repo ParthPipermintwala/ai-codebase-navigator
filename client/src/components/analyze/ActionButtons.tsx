@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  Bug,
   GitGraph,
   MessageCircle,
   PackageSearch,
@@ -29,6 +30,11 @@ const actions = [
     label: "View Dependencies",
     path: "/dependencies",
     icon: PackageSearch,
+  },
+  {
+    label: "Open Bug Detector",
+    path: "/bugs",
+    icon: Bug,
   },
   {
     label: "Start Codebase Tour",
