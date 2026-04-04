@@ -532,7 +532,8 @@ const analyzeRepository = async (req, res) => {
           const { structure, created_at, ...safeExisting } = existing;
           const responsePayload = {
             repoId: String(safeExisting.id),
-            message: "Repository loaded from cache while GitHub rate limit is active",
+            message:
+              "Repository loaded from cache while GitHub rate limit is active",
             remaining: "unlimited",
             ...safeExisting,
           };

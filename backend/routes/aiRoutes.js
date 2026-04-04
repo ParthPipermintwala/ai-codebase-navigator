@@ -12,10 +12,6 @@ aiRouter.post(
   subscriptionMiddleware,
   getSummary,
 );
-chatRouter.post(
-  "/chat/:repoId",
-  authMiddleware,
-  chatWithRepo,
-);
+chatRouter.post("/chat/:repoId", authMiddleware, chatWithRepo);
 
 export { aiRouter, chatRouter };
