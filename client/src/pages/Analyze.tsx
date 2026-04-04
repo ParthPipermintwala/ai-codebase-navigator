@@ -93,14 +93,13 @@ const Analyze = () => {
     setLoading(true);
     setError("");
     setCurrentStep(0);
+    const progressTimer = window.setInterval(() => {
+      setCurrentStep((current) =>
+        current >= steps.length - 1 ? current : current + 1,
+      );
+    }, 500);
 
     try {
-      // Simulate UI steps for better UX
-      for (let i = 0; i < steps.length; i++) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        setCurrentStep(i + 1);
-      }
-
       const analyzed = await analyzeRepository(url);
       const nextRepoId = analyzed?.repoId || analyzed?.id;
 
@@ -142,6 +141,7 @@ const Analyze = () => {
       });
       console.error("Analyze error:", err);
     } finally {
+      window.clearInterval(progressTimer);
       setLoading(false);
       setCurrentStep(0);
     }

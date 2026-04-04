@@ -3,6 +3,11 @@ const API_BASE_URL =
     ? `${import.meta.env.VITE_API_URL}/api`
     : "http://localhost:3000/api";
 
+const API_SERVER_URL =
+  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL
+    ? String(import.meta.env.VITE_API_URL)
+    : "http://localhost:3000";
+
 export class ApiError extends Error {
   constructor(message, status, data) {
     super(message);
@@ -43,15 +48,34 @@ const buildHeaders = (headers, body) => {
   return nextHeaders;
 };
 
+const withTimeoutSignal = (timeoutMs = 12000) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  return { signal: controller.signal, timeoutId };
+};
+
 const apiRequest = async (path, options = {}) => {
   const { body, headers, ...restOptions } = options;
+  const { signal, timeoutId } = withTimeoutSignal();
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
-    headers: buildHeaders(headers, body),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    ...restOptions,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: "include",
+      headers: buildHeaders(headers, body),
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+      ...restOptions,
+    });
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError("Request timed out. Please try again.", 408, null);
+    }
+    throw error;
+  }
+
+  window.clearTimeout(timeoutId);
 
   let data = null;
   try {
@@ -77,6 +101,15 @@ export const login = (payload) =>
     body: payload,
   });
 
+export const loginWithGoogleCode = (code) =>
+  apiRequest("/auth/google", {
+    method: "POST",
+    body: { code },
+  });
+
+export const getGithubLoginUrl = () =>
+  `${API_SERVER_URL}/api/auth/github/start`;
+
 export const register = (payload) =>
   apiRequest("/auth/register", {
     method: "POST",
@@ -86,6 +119,18 @@ export const register = (payload) =>
 export const getCurrentUser = () =>
   apiRequest("/auth/me", {
     method: "GET",
+  });
+
+export const updateCurrentUser = (payload) =>
+  apiRequest("/auth/me", {
+    method: "PATCH",
+    body: payload,
+  });
+
+export const verifyGithubToken = (token) =>
+  apiRequest("/auth/verify-github", {
+    method: "POST",
+    body: { token },
   });
 
 export const logout = () =>
@@ -101,6 +146,11 @@ export const analyzeRepository = (repoUrl) =>
 
 export const getRepository = (repoId) =>
   apiRequest(`/repo/${encodeURIComponent(repoId)}`, {
+    method: "GET",
+  });
+
+export const getUserRepositories = () =>
+  apiRequest(`/repo/user`, {
     method: "GET",
   });
 

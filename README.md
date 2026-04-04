@@ -1,58 +1,56 @@
-# 🚀 AI Codebase Navigator
+# AI Codebase Navigator
 
-> Understand any GitHub repository in seconds — not hours.
+> Understand any GitHub repository in minutes, not hours.
 
----
+AI Codebase Navigator is an AI-assisted platform that turns a repository into a clear, interactive workspace: architecture summaries, dependency analysis, repository maps, impact insights, and a guided codebase tour.
 
-## 🧠 Problem
+## What it helps with
 
-Developers spend hours trying to understand unfamiliar GitHub repositories—navigating complex folder structures, unclear dependencies, and undocumented logic. This slows down onboarding, reduces productivity, and creates a significant barrier to contribution and innovation.
+- Faster onboarding into unfamiliar codebases
+- Clearer understanding of folder structure and responsibilities
+- Dependency and architecture visibility
+- Safer change planning with impact analysis
+- Natural-language exploration through AI chat
 
-> ⚡ What if developers could understand any codebase in seconds instead of hours?
+## Product Highlights
 
----
+- **AI Codebase Analysis** - Generate a high-level view of the project instantly.
+- **Repository Map** - Visualize the folder and file hierarchy.
+- **AI Chat Assistant** - Ask questions about any analyzed repository.
+- **Dependency Insights** - Review packages and versions in a clean grouped view.
+- **Impact Analysis** - See what could break before you change a file.
+- **Guided Tour** - Walk through key areas of the codebase step by step.
 
-## 💡 Solution
+## Quick Start
 
-AI Codebase Navigator is an AI-first SaaS platform that analyzes GitHub repositories and transforms them into clear, structured, and interactive insights.
+1. Open the app and paste a public GitHub repository URL.
+2. Run analysis to generate insights.
+3. Explore the repository map, chat assistant, dependency list, and guided tour.
 
-Instead of manually exploring code, developers get instant understanding through AI-powered analysis, visualization, and intelligent assistance.
+## Tech Stack
 
----
+- Frontend: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- Backend: Node.js, Express, Supabase, Redis
+- AI + analysis: repository metadata, structured summaries, and interactive exploration
 
-## ✨ Features
+## Development
 
-### ⚡ Core Features
+```bash
+cd client
+npm install
+npm run dev
+```
 
-* 🧠 **AI Codebase Analysis**
-  Generate high-level architecture and logic explanations instantly
+```bash
+cd backend
+npm install
+npm run dev
+```
 
-* 🔍 **Analyze Repository**
-  Input any GitHub URL and get structured insights
+## Notes
 
-* 🗺️ **Repository Map**
-  Visualize project structure and relationships
-
-* 💬 **AI Chat Assistant**
-  Ask questions about the codebase in natural language
-
----
-
-### 🔬 Advanced Analysis
-
-* 📦 **Dependency Insights**
-  Understand libraries, packages, and relationships
-
-* ⚡ **Impact Analysis**
-  Predict how changes in one file affect the system
-
----
-
-### 📚 Additional
-
-* ⚙️ **Custom Settings**
-  Configure analysis preferences
-
----
+- Configure environment variables before starting the backend and frontend.
+- For Google login, set `VITE_GOOGLE_CLIENT_ID` in the client environment.
+- For OAuth callbacks, keep backend redirect settings aligned with your provider console.
 
 

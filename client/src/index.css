@@ -55,47 +55,47 @@
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 20% 92%;
+    --background: 222 28% 9%;
+    --foreground: 210 24% 94%;
 
-    --card: 222 44% 8%;
-    --card-foreground: 210 20% 92%;
+    --card: 222 24% 12%;
+    --card-foreground: 210 24% 94%;
 
-    --popover: 222 44% 8%;
-    --popover-foreground: 210 20% 92%;
+    --popover: 222 24% 12%;
+    --popover-foreground: 210 24% 94%;
 
-    --primary: 173 80% 50%;
-    --primary-foreground: 222 47% 6%;
+    --primary: 182 68% 52%;
+    --primary-foreground: 222 36% 10%;
 
-    --secondary: 222 30% 14%;
-    --secondary-foreground: 210 20% 85%;
+    --secondary: 222 21% 17%;
+    --secondary-foreground: 210 18% 87%;
 
-    --muted: 222 30% 12%;
-    --muted-foreground: 215 15% 55%;
+    --muted: 222 20% 15%;
+    --muted-foreground: 215 16% 68%;
 
-    --accent: 173 60% 40%;
-    --accent-foreground: 210 20% 95%;
+    --accent: 189 66% 45%;
+    --accent-foreground: 210 30% 95%;
 
     --destructive: 0 72% 55%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 222 25% 16%;
-    --input: 222 25% 16%;
-    --ring: 173 80% 50%;
+    --border: 221 18% 24%;
+    --input: 221 18% 24%;
+    --ring: 182 68% 52%;
 
-    --sidebar-background: 222 47% 5%;
-    --sidebar-foreground: 215 15% 65%;
-    --sidebar-primary: 173 80% 50%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 222 30% 12%;
-    --sidebar-accent-foreground: 210 20% 92%;
-    --sidebar-border: 222 25% 14%;
-    --sidebar-ring: 173 80% 50%;
+    --sidebar-background: 222 30% 8%;
+    --sidebar-foreground: 215 16% 74%;
+    --sidebar-primary: 182 68% 52%;
+    --sidebar-primary-foreground: 222 36% 10%;
+    --sidebar-accent: 222 22% 14%;
+    --sidebar-accent-foreground: 210 24% 94%;
+    --sidebar-border: 221 18% 20%;
+    --sidebar-ring: 182 68% 52%;
 
-    --glow: 173 80% 50%;
-    --surface: 222 40% 10%;
-    --surface-hover: 222 35% 14%;
-    --code-bg: 222 50% 7%;
+    --glow: 182 68% 52%;
+    --surface: 222 22% 13%;
+    --surface-hover: 222 20% 18%;
+    --code-bg: 222 26% 11%;
     --success: 142 70% 45%;
     --warning: 38 92% 50%;
   }
@@ -109,6 +109,14 @@
     @apply bg-background text-foreground font-sans antialiased;
     font-family: "Inter", system-ui, sans-serif;
   }
+  .dark body {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--background)),
+      hsl(222 30% 7%)
+    );
+    background-attachment: fixed;
+  }
   code,
   .font-mono {
     font-family: "JetBrains Mono", monospace;
@@ -117,13 +125,17 @@
 
 @layer utilities {
   .glow-border {
-    box-shadow: 0 0 20px -5px hsl(var(--glow) / 0.15);
+    box-shadow: none;
   }
   .glow-text {
-    text-shadow: 0 0 30px hsl(var(--glow) / 0.5);
+    text-shadow: none;
   }
   .glass {
-    @apply bg-card/80 backdrop-blur-xl border border-border;
+    @apply backdrop-blur-xl border border-border;
+    background-color: hsl(var(--card) / 0.82);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.04),
+      0 8px 22px -18px hsl(220 25% 5% / 0.8);
   }
   .gradient-primary {
     background: linear-gradient(
@@ -147,6 +159,30 @@
       hsl(173 90% 70%)
     );
   }
+
+  .scrollbar-modern {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(221 16% 40%) hsl(222 22% 12%);
+  }
+
+  .scrollbar-modern::-webkit-scrollbar {
+    width: 7px;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-track {
+    background: hsl(222 22% 12%);
+    border-radius: 999px;
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, hsl(221 16% 42%), hsl(221 16% 33%));
+    border-radius: 999px;
+    border: 1px solid hsl(222 18% 20%);
+  }
+
+  .scrollbar-modern::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, hsl(182 58% 48%), hsl(182 48% 40%));
+  }
 }
 
 ::-webkit-scrollbar {
@@ -154,19 +190,19 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: hsl(224 58% 6%);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a2a2a;
+  background: hsl(221 24% 24%);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a3a;
+  background: hsl(188 40% 40%);
 }
 
 html {
   scrollbar-width: thin;
-  scrollbar-color: #2a2a2a #0a0a0a;
+  scrollbar-color: hsl(221 24% 24%) hsl(224 58% 6%);
 }

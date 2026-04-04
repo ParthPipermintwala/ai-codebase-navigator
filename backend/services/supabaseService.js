@@ -5,8 +5,10 @@ const REPOSITORY_DETAIL_FIELDS =
   "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, structure, dependencies, summary, created_at";
 const REPOSITORY_LIST_FIELDS =
   "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, dependencies, summary, created_at";
+const USER_FIELDS = "*";
 
 const insertRepository = async ({
+  userId,
   repoUrl,
   name,
   owner,
@@ -22,6 +24,7 @@ const insertRepository = async ({
   dependencies,
 }) => {
   const payload = {
+    user_id: userId,
     repo_url: repoUrl,
     name,
     owner,
@@ -156,7 +159,7 @@ const getRepositoryDependencyDataById = async (repoId) => {
   const query = supabase
     .from("repositories")
     .select(
-      "owner, name, default_branch, structure, tech_stack, dependencies, summary",
+      "user_id, owner, name, default_branch, structure, tech_stack, dependencies, summary",
     )
     .eq("id", repoId);
 
@@ -185,7 +188,7 @@ const getRepositoryForAi = async (repoId) => {
   const { data, error } = await supabase
     .from("repositories")
     .select(
-      "id, name, owner, description, structure, dependencies, summary, tech_stack, default_branch, repo_url",
+      "id, user_id, name, owner, description, structure, dependencies, summary, tech_stack, default_branch, repo_url",
     )
     .eq("id", repoId)
     .single();
@@ -199,6 +202,57 @@ const getRepositoryForAi = async (repoId) => {
       `Supabase repository AI fetch failed: ${error.message}`,
       500,
     );
+  }
+
+  return data;
+};
+
+const getUserById = async (userId) => {
+  if (!userId || typeof userId !== "string" || !userId.trim()) {
+    throw new HttpError("Invalid userId provided", 400);
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .select(USER_FIELDS)
+    .eq("id", userId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+
+    throw new HttpError(`Supabase user fetch failed: ${error.message}`, 500);
+  }
+
+  return data;
+};
+
+const updateUserById = async (userId, updates = {}) => {
+  if (!userId || typeof userId !== "string" || !userId.trim()) {
+    throw new HttpError("Invalid userId provided", 400);
+  }
+
+  const payload = {};
+
+  if (Object.prototype.hasOwnProperty.call(updates, "name")) {
+    payload.name = updates.name;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "githubToken")) {
+    payload.github_token = updates.githubToken;
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .update(payload)
+    .eq("id", userId)
+    .select(USER_FIELDS)
+    .single();
+
+  if (error) {
+    throw new HttpError(`Supabase user update failed: ${error.message}`, 500);
   }
 
   return data;
@@ -232,5 +286,7 @@ export {
   getRepositoryStructureById,
   getRepositoryDependencyDataById,
   getRepositoryForAi,
+  getUserById,
+  updateUserById,
   updateRepositorySummary,
 };

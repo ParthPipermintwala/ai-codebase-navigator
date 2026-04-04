@@ -18,6 +18,35 @@ const resolveDependencyType = (value?: string) => {
   return value || "Unknown";
 };
 
+const formatDependencyVersion = (version?: string | null) => {
+  const raw = String(version || "").trim();
+  if (!raw || raw === "*" || raw.toLowerCase() === "latest") {
+    return "latest";
+  }
+
+  if (raw.startsWith("workspace:")) {
+    const workspaceVersion = raw.replace(/^workspace:/, "").trim();
+    return workspaceVersion || "latest";
+  }
+
+  const semverToken = raw.match(/\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?/);
+  if (semverToken?.[0]) {
+    return semverToken[0];
+  }
+
+  const cleaned = raw.replace(/^[~^><=v\s]+/, "").trim();
+  return cleaned || raw;
+};
+
+const toVersionLabel = (version?: string | null) => {
+  const normalized = formatDependencyVersion(version);
+  if (normalized === "latest") {
+    return normalized;
+  }
+
+  return /^\d/.test(normalized) ? `v${normalized}` : normalized;
+};
+
 export const DependenciesList = ({ dependencies, type }: DependenciesListProps) => {
   const dependencyType = resolveDependencyType(type);
 
@@ -46,7 +75,7 @@ export const DependenciesList = ({ dependencies, type }: DependenciesListProps) 
               >
                 <Package2 className="h-3.5 w-3.5 text-primary" />
                 <span className="font-medium text-foreground">{dep.name}</span>
-                <span className="text-muted-foreground">{dep.version ? `v${dep.version}` : "latest"}</span>
+                <span className="text-muted-foreground">{toVersionLabel(dep.version)}</span>
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                   <Code2 className="h-3 w-3" />
                   {dependencyType}

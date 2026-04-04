@@ -9,14 +9,15 @@ class HttpError extends Error {
   }
 }
 
-const githubHeaders = () => {
+const githubHeaders = (githubToken) => {
   const headers = {
     Accept: "application/vnd.github+json",
     "User-Agent": "ai-code-nav",
   };
 
-  if (process.env.GITHUB_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = String(githubToken || process.env.GITHUB_TOKEN || "").trim();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   return headers;
@@ -63,10 +64,10 @@ const normalizeRepoUrl = (repoUrl) => {
   return { owner, repo };
 };
 
-const githubRequest = async (path) => {
+const githubRequest = async (path, githubToken) => {
   const response = await fetch(`${GITHUB_API_BASE}${path}`, {
     method: "GET",
-    headers: githubHeaders(),
+    headers: githubHeaders(githubToken),
   });
 
   if (!response.ok) {
@@ -87,29 +88,39 @@ const githubRequest = async (path) => {
   return response.json();
 };
 
-const getRepoMetadata = async (owner, repo) => {
-  return githubRequest(`/repos/${owner}/${repo}`);
+const getRepoMetadata = async (owner, repo, githubToken) => {
+  return githubRequest(`/repos/${owner}/${repo}`, githubToken);
 };
 
-const getContributors = async (owner, repo) => {
-  return githubRequest(`/repos/${owner}/${repo}/contributors?per_page=10`);
+const getContributors = async (owner, repo, githubToken) => {
+  return githubRequest(
+    `/repos/${owner}/${repo}/contributors?per_page=10`,
+    githubToken,
+  );
 };
 
-const getCommits = async (owner, repo) => {
-  return githubRequest(`/repos/${owner}/${repo}/commits?per_page=10`);
+const getCommits = async (owner, repo, githubToken) => {
+  return githubRequest(
+    `/repos/${owner}/${repo}/commits?per_page=10`,
+    githubToken,
+  );
 };
 
-const getIssues = async (owner, repo) => {
-  return githubRequest(`/repos/${owner}/${repo}/issues?state=all&per_page=10`);
+const getIssues = async (owner, repo, githubToken) => {
+  return githubRequest(
+    `/repos/${owner}/${repo}/issues?state=all&per_page=10`,
+    githubToken,
+  );
 };
 
-const getLanguages = async (owner, repo) => {
-  return githubRequest(`/repos/${owner}/${repo}/languages`);
+const getLanguages = async (owner, repo, githubToken) => {
+  return githubRequest(`/repos/${owner}/${repo}/languages`, githubToken);
 };
 
-const getRepoTree = async (owner, repo, branch) => {
+const getRepoTree = async (owner, repo, branch, githubToken) => {
   return githubRequest(
     `/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+    githubToken,
   );
 };
 
@@ -199,7 +210,13 @@ const detectTechStack = (tree = []) => {
   return Array.from(stack);
 };
 
-const getRawFileContent = async (owner, repo, branch, filePath) => {
+const getRawFileContent = async (
+  owner,
+  repo,
+  branch,
+  filePath,
+  githubToken,
+) => {
   const encodedPath = filePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
@@ -211,6 +228,13 @@ const getRawFileContent = async (owner, repo, branch, filePath) => {
       method: "GET",
       headers: {
         "User-Agent": "ai-code-nav",
+        ...(String(githubToken || process.env.GITHUB_TOKEN || "").trim()
+          ? {
+              Authorization: `Bearer ${String(
+                githubToken || process.env.GITHUB_TOKEN || "",
+              ).trim()}`,
+            }
+          : {}),
       },
     });
 
@@ -246,4 +270,6 @@ export {
   filterRelevantFiles,
   detectTechStack,
   getRawFileContent,
+  githubHeaders,
+  githubRequest,
 };

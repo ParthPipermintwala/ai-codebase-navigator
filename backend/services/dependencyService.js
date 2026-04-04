@@ -70,7 +70,13 @@ const detectDependencyFile = (structure) => {
   return { type: "unknown", filePath: null };
 };
 
-const getRawGithubFile = async ({ owner, repo, branch, filePath }) => {
+const getRawGithubFile = async ({
+  owner,
+  repo,
+  branch,
+  filePath,
+  githubToken,
+}) => {
   const encodedPath = filePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
@@ -103,6 +109,13 @@ const getRawGithubFile = async ({ owner, repo, branch, filePath }) => {
         method: "GET",
         headers: {
           "User-Agent": "ai-code-nav",
+          ...(String(githubToken || process.env.GITHUB_TOKEN || "").trim()
+            ? {
+                Authorization: `Bearer ${String(
+                  githubToken || process.env.GITHUB_TOKEN || "",
+                ).trim()}`,
+              }
+            : {}),
         },
       });
     } catch (error) {
@@ -143,6 +156,9 @@ const parseNodeDependencies = (content, lockfileOnly = false) => {
   const seen = new Set();
 
   if (lockfileOnly) {
+    const runtimeDependencies = [];
+    const devDependencies = [];
+
     const lockDeps = parsed.dependencies || {};
     for (const [name, versionObj] of Object.entries(lockDeps)) {
       if (typeof name === "string" && name.trim()) {
@@ -152,7 +168,7 @@ const parseNodeDependencies = (content, lockfileOnly = false) => {
             : String(versionObj);
         if (!seen.has(name)) {
           seen.add(name);
-          output.push({ name, version: version || null });
+          runtimeDependencies.push({ name, version: version || null });
         }
       }
     }
@@ -171,30 +187,59 @@ const parseNodeDependencies = (content, lockfileOnly = false) => {
       const version =
         typeof pkgObj === "object" ? pkgObj?.version || null : null;
       seen.add(name);
-      output.push({ name, version });
+      const targetList =
+        pkgObj?.dev === true ? devDependencies : runtimeDependencies;
+      targetList.push({ name, version });
     }
 
-    return output.sort((a, b) => a.name.localeCompare(b.name));
+    const sortedRuntime = runtimeDependencies.sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    const sortedDev = devDependencies.sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    return {
+      dependencies: [...sortedRuntime, ...sortedDev],
+      runtimeDependencies: sortedRuntime,
+      devDependencies: sortedDev,
+    };
   }
 
   const deps = parsed.dependencies || {};
   const devDeps = parsed.devDependencies || {};
+  const runtimeDependencies = [];
+  const devDependencies = [];
 
   for (const [name, version] of Object.entries(deps)) {
     if (typeof name === "string" && name.trim() && !seen.has(name)) {
       seen.add(name);
-      output.push({ name, version: String(version || "") || null });
+      runtimeDependencies.push({
+        name,
+        version: String(version || "") || null,
+      });
     }
   }
 
   for (const [name, version] of Object.entries(devDeps)) {
     if (typeof name === "string" && name.trim() && !seen.has(name)) {
       seen.add(name);
-      output.push({ name, version: String(version || "") || null });
+      devDependencies.push({ name, version: String(version || "") || null });
     }
   }
 
-  return output.sort((a, b) => a.name.localeCompare(b.name));
+  const sortedRuntime = runtimeDependencies.sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const sortedDev = devDependencies.sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  return {
+    dependencies: [...sortedRuntime, ...sortedDev],
+    runtimeDependencies: sortedRuntime,
+    devDependencies: sortedDev,
+  };
 };
 
 const parsePythonDependencies = (content) => {
@@ -416,6 +461,7 @@ const extractDependenciesFromRepository = async ({
   defaultBranch,
   structure,
   tech_stack,
+  githubToken,
 }) => {
   let detected = detectDependencyFile(structure);
   const paths = normalizeStructurePaths(structure);
@@ -446,6 +492,7 @@ const extractDependenciesFromRepository = async ({
     repo: name,
     branch: defaultBranch,
     filePath: detected.filePath,
+    githubToken,
   }).catch((error) => {
     if (Number(error?.statusCode) === 404) {
       return null;
@@ -462,9 +509,17 @@ const extractDependenciesFromRepository = async ({
   }
 
   let dependencies = [];
+  let runtimeDependencies = [];
+  let devDependencies = [];
 
   if (detected.type === "node") {
-    dependencies = parseNodeDependencies(rawContent, detected.lockfileOnly);
+    const nodeDependencyResult = parseNodeDependencies(
+      rawContent,
+      detected.lockfileOnly,
+    );
+    dependencies = nodeDependencyResult.dependencies || [];
+    runtimeDependencies = nodeDependencyResult.runtimeDependencies || [];
+    devDependencies = nodeDependencyResult.devDependencies || [];
   } else if (detected.type === "python") {
     const fileName = detected.filePath.toLowerCase().split("/").pop();
     if (fileName === "pyproject.toml") {
@@ -488,6 +543,8 @@ const extractDependenciesFromRepository = async ({
   return {
     type: detected.type,
     dependencies: dependencies || [],
+    runtimeDependencies: runtimeDependencies || [],
+    devDependencies: devDependencies || [],
   };
 };
 

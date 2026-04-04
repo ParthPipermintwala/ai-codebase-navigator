@@ -11,15 +11,15 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8"
+      className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-6"
     >
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+      <div className="space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">{title}</h1>
         {description && (
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         )}
       </div>
-      {children && <div className="flex items-center gap-3">{children}</div>}
+      {children && <div className="flex items-center gap-2">{children}</div>}
     </motion.div>
   );
 }

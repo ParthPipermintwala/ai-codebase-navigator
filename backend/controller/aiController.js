@@ -2,6 +2,7 @@ import { getCachedJson, setCachedJson } from "../services/redisService.js";
 import {
   getRepositoryForAi,
   updateRepositorySummary,
+  getUserById,
 } from "../services/supabaseService.js";
 import { generateSummary, generateChatAnswer } from "../services/aiService.js";
 import { createEmbedding, queryVectors } from "../services/vectorService.js";
@@ -241,7 +242,7 @@ const extractImportsFromContent = (content) => {
   return Array.from(imports).sort((left, right) => left.localeCompare(right));
 };
 
-const buildFileAwareContext = async (repoData, question) => {
+const buildFileAwareContext = async (repoData, question, githubToken) => {
   const owner = repoData?.owner;
   const repo = repoData?.name;
   const branch = repoData?.default_branch || "main";
@@ -264,7 +265,9 @@ const buildFileAwareContext = async (repoData, question) => {
 
     let content = "";
     try {
-      content = (await getRawFileContent(owner, repo, branch, filePath)) || "";
+      content =
+        (await getRawFileContent(owner, repo, branch, filePath, githubToken)) ||
+        "";
     } catch {
       continue;
     }
@@ -374,6 +377,11 @@ const getSummary = async (req, res) => {
     if (!repoData) {
       return res.status(404).json({ message: "Repository not found" });
     }
+
+    const user = repoData?.user_id
+      ? await getUserById(String(repoData.user_id))
+      : null;
+    const githubToken = String(user?.github_token || "").trim() || null;
 
     if (repoData.summary && String(repoData.summary).trim()) {
       const existingSummary = String(repoData.summary).trim();
@@ -561,6 +569,7 @@ const chatWithRepo = async (req, res) => {
     const directFileSearch = await buildFileAwareContext(
       repoData,
       normalizedQuestion,
+      githubToken,
     );
     const directContext = directFileSearch.context;
     const hasDirectContext = Boolean(directContext);

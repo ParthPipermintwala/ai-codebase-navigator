@@ -13,11 +13,11 @@
   "license": "MIT",
   "author": "parth pipermintwala and darshan modi",
   "type": "module",
-  "main": "backend/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js",
-    "test": "node backend/server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node server.js"
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^7.1.0",

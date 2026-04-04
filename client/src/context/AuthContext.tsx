@@ -17,6 +17,8 @@ interface AuthUser {
   id: string;
   name: string;
   email: string;
+  hasGithubToken?: boolean;
+  isSubscribed?: boolean;
 }
 
 interface AuthContextValue {
@@ -39,7 +41,7 @@ const extractUser = (data: any): AuthUser | null => {
     return null;
   }
 
-  const { id, name, email } = data.user;
+  const { id, name, email, hasGithubToken, isSubscribed } = data.user;
   if (!id || !email) {
     return null;
   }
@@ -48,6 +50,8 @@ const extractUser = (data: any): AuthUser | null => {
     id: String(id),
     name: String(name || ""),
     email: String(email),
+    hasGithubToken: Boolean(hasGithubToken),
+    isSubscribed: Boolean(isSubscribed),
   };
 };
 

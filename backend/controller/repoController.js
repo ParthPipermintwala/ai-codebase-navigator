@@ -16,6 +16,7 @@ import {
   bulkInsertContributors,
   bulkInsertCommits,
   bulkInsertIssues,
+  getUserById,
   getRepositoryById,
   getRepositoriesByUserId,
   getRepositoryStructureById,
@@ -235,7 +236,13 @@ const extractTechFromSource = (filePath, content, stack) => {
   }
 };
 
-const collectActualTechStack = async (files, owner, repo, defaultBranch) => {
+const collectActualTechStack = async (
+  files,
+  owner,
+  repo,
+  defaultBranch,
+  githubToken,
+) => {
   const stack = new Set();
   const list = Array.isArray(files) ? files.slice(0, MAX_FILES) : [];
 
@@ -255,6 +262,7 @@ const collectActualTechStack = async (files, owner, repo, defaultBranch) => {
         repo,
         defaultBranch,
         file.path,
+        githubToken,
       );
       if (!content) {
         return null;
@@ -275,9 +283,19 @@ const collectActualTechStack = async (files, owner, repo, defaultBranch) => {
 
 const analyzeRepository = async (req, res) => {
   try {
+    const userId = req?.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
     const { repoUrl } = req.body || {};
     const { owner, repo } = normalizeRepoUrl(repoUrl);
-    const cacheKey = `repo:${owner}:${repo}`;
+    const cacheKey = `repo:user:${userId}:${owner}:${repo}`;
+    const user = await getUserById(userId);
+    const githubToken = String(user?.github_token || "").trim() || null;
 
     const cached = await getCachedJson(cacheKey);
     if (cached) {
@@ -286,11 +304,11 @@ const analyzeRepository = async (req, res) => {
 
     const [metadata, contributors, commits, issues, languages] =
       await Promise.all([
-        getRepoMetadata(owner, repo),
-        safeArrayResult(() => getContributors(owner, repo)),
-        safeArrayResult(() => getCommits(owner, repo)),
-        safeArrayResult(() => getIssues(owner, repo)),
-        safeObjectResult(() => getLanguages(owner, repo)),
+        getRepoMetadata(owner, repo, githubToken),
+        safeArrayResult(() => getContributors(owner, repo, githubToken)),
+        safeArrayResult(() => getCommits(owner, repo, githubToken)),
+        safeArrayResult(() => getIssues(owner, repo, githubToken)),
+        safeObjectResult(() => getLanguages(owner, repo, githubToken)),
       ]);
 
     const defaultBranch = metadata.default_branch;
@@ -298,7 +316,12 @@ const analyzeRepository = async (req, res) => {
       throw new HttpError("Repository default branch not found", 422);
     }
 
-    const treeResponse = await getRepoTree(owner, repo, defaultBranch);
+    const treeResponse = await getRepoTree(
+      owner,
+      repo,
+      defaultBranch,
+      githubToken,
+    );
     const fullTree = treeResponse?.tree || [];
     const totalFiles = fullTree.filter(
       (item) => item?.type === "blob" && item?.path,
@@ -316,6 +339,7 @@ const analyzeRepository = async (req, res) => {
       name: repo,
       defaultBranch,
       structure: structurePaths,
+      githubToken,
     }).catch((error) => {
       console.warn("[analyzeRepository] dependency extraction failed", {
         owner,
@@ -332,6 +356,7 @@ const analyzeRepository = async (req, res) => {
       owner,
       repo,
       defaultBranch,
+      githubToken,
     );
 
     console.log(
@@ -339,6 +364,7 @@ const analyzeRepository = async (req, res) => {
     );
 
     const repositoryRow = await insertRepository({
+      userId,
       repoUrl,
       name: repo,
       owner,
@@ -401,6 +427,7 @@ const analyzeRepository = async (req, res) => {
               repo,
               defaultBranch,
               file.path,
+              githubToken,
             );
           } catch (error) {
             const message = error?.message || String(error);
@@ -550,7 +577,7 @@ const getRepository = async (req, res) => {
 
 const getUserRepositories = async (req, res) => {
   try {
-    const userId = req?.user?.id || req?.query?.userId;
+    const userId = req?.user?.userId || req?.query?.userId;
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -584,7 +611,7 @@ const getUserRepositories = async (req, res) => {
       message,
       statusCode,
       stack: error?.stack,
-      userId: req?.user?.id || req?.query?.userId,
+      userId: req?.user?.userId || req?.query?.userId,
     });
 
     return res.status(statusCode).json({
@@ -632,7 +659,7 @@ const getRepoMap = async (req, res) => {
       statusCode,
       stack: error?.stack,
       repoId: req?.params?.repoId,
-      userId: req?.user?.id,
+      userId: req?.user?.userId,
     });
 
     return res.status(statusCode).json({
@@ -667,7 +694,13 @@ const getDependencies = async (req, res) => {
       });
     }
 
-    const responsePayload = await extractDependenciesFromRepository(repository);
+    const dependencyUser = repository?.user_id
+      ? await getUserById(String(repository.user_id))
+      : null;
+    const responsePayload = await extractDependenciesFromRepository({
+      ...repository,
+      githubToken: String(dependencyUser?.github_token || "").trim() || null,
+    });
     await setCachedJson(cacheKey, responsePayload, CACHE_TTL_SECONDS);
 
     return res.status(200).json(responsePayload);
