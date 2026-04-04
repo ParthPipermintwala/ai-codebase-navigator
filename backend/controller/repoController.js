@@ -10,7 +10,11 @@ import {
   filterRelevantFiles,
   getRawFileContent,
 } from "../services/githubService.js";
-import { getCachedJson, setCachedJson } from "../services/redisService.js";
+import {
+  getCachedJson,
+  setCachedJson,
+  deleteCachedKey,
+} from "../services/redisService.js";
 import {
   insertRepository,
   bulkInsertContributors,
@@ -303,12 +307,14 @@ const analyzeRepository = async (req, res) => {
 
     const cached = await getCachedJson(cacheKey);
     if (cached) {
+      await deleteCachedKey(`repos:user:${userId}`);
       return res.status(200).json(cached);
     }
 
     const sharedCached = await getCachedJson(sharedCacheKey);
     if (sharedCached) {
       await setCachedJson(cacheKey, sharedCached, CACHE_TTL_SECONDS);
+      await deleteCachedKey(`repos:user:${userId}`);
       return res.status(200).json(sharedCached);
     }
 
@@ -514,6 +520,7 @@ const analyzeRepository = async (req, res) => {
 
     await setCachedJson(cacheKey, responsePayload, CACHE_TTL_SECONDS);
     await setCachedJson(sharedCacheKey, responsePayload, CACHE_TTL_SECONDS);
+    await deleteCachedKey(`repos:user:${userId}`);
     return res.status(200).json(responsePayload);
   } catch (error) {
     const message = error?.message || "Repository analysis failed";
@@ -548,6 +555,7 @@ const analyzeRepository = async (req, res) => {
             responsePayload,
             CACHE_TTL_SECONDS,
           );
+          await deleteCachedKey(`repos:user:${req?.user?.userId}`);
 
           return res.status(200).json(responsePayload);
         }

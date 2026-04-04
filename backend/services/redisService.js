@@ -20,4 +20,12 @@ const setCachedJson = async (key, payload, ttlSeconds = 3600) => {
   }
 };
 
-export { getCachedJson, setCachedJson };
+const deleteCachedKey = async (key) => {
+  try {
+    await redisClient.del(key);
+  } catch (error) {
+    console.error("Redis delete failed:", error.message);
+  }
+};
+
+export { getCachedJson, setCachedJson, deleteCachedKey };
