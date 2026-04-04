@@ -728,16 +728,16 @@ export const AiInput003: React.FC<AiInput003Props> = ({
   };
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-black text-white">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-black text-white">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -bottom-[10%] left-1/2 h-[30%] w-[100%] -translate-x-1/2 bg-cyan-500/10 blur-[120px]" />
       </div>
 
       <div
         ref={scrollRef}
-        className="relative z-10 h-[calc(100vh-120px)] overflow-y-auto px-4 py-6"
+        className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6"
       >
-        <div className="max-w-4xl mx-auto w-full space-y-4">
+        <div className="mx-auto w-full max-w-4xl space-y-4">
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
               <motion.div
@@ -792,15 +792,15 @@ export const AiInput003: React.FC<AiInput003Props> = ({
         </div>
       </div>
 
-      <div className="sticky bottom-0 z-20 border-t border-neutral-800 bg-black/80 p-4 backdrop-blur-md">
-        <div className="relative w-full max-w-4xl mx-auto">
+      <div className="sticky bottom-0 z-20 border-t border-neutral-800 bg-black/80 p-3 backdrop-blur-md sm:p-4">
+        <div className="relative mx-auto w-full max-w-4xl">
           <AnimatePresence>
             {mention && (
               <motion.div
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute bottom-full left-4 mb-4"
+                className="absolute bottom-full left-2 mb-3 sm:left-4 sm:mb-4"
               >
                 <MentionBadge type={mention} />
               </motion.div>
@@ -820,7 +820,7 @@ export const AiInput003: React.FC<AiInput003Props> = ({
               stiffness: 300,
               damping: 28,
             }}
-            className="group relative flex items-center overflow-hidden rounded-full border border-neutral-700 bg-neutral-900 px-6 py-3 pr-4 transition-colors duration-300"
+            className="group relative flex items-center gap-2 overflow-hidden rounded-2xl border border-neutral-700 bg-neutral-900 px-3 py-2.5 transition-colors duration-300 sm:rounded-full sm:px-6 sm:py-3"
           >
             {isSending && (
               <motion.div
@@ -840,7 +840,7 @@ export const AiInput003: React.FC<AiInput003Props> = ({
               onChange={handleInputChange}
               onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
               placeholder={placeholder}
-              className="z-10 flex-1 border-none bg-transparent py-2 text-[16px] font-medium text-neutral-100 placeholder-neutral-500 outline-none"
+              className="z-10 min-w-0 flex-1 border-none bg-transparent py-2 text-[16px] font-medium text-neutral-100 placeholder-neutral-500 outline-none sm:text-sm"
               autoFocus
             />
 
@@ -848,7 +848,7 @@ export const AiInput003: React.FC<AiInput003Props> = ({
               whileTap={{ scale: 0.9 }}
               onClick={handleSendMessage}
               disabled={!inputValue.trim() || isSending}
-              className={`z-10 ml-4 flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ${
+              className={`z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-300 sm:ml-4 sm:h-10 sm:w-10 ${
                 inputValue.trim() && !isSending
                   ? "bg-white text-black shadow-sm shadow-neutral-700 active:scale-95"
                   : "bg-neutral-700 text-neutral-300"

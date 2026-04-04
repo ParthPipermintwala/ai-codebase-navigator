@@ -51,10 +51,16 @@ const otherItems = [
 ];
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { user } = useAuth();
   const isSubscribed = Boolean(user?.isSubscribed);
+
+  const closeMobileSidebar = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   const renderItems = (items: typeof mainItems) =>
     items.map((item) => (
@@ -63,6 +69,7 @@ export function AppSidebar() {
           <NavLink
             to={item.url}
             end
+            onClick={closeMobileSidebar}
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-0.5"
             activeClassName="bg-sidebar-accent text-primary font-medium shadow-sm"
           >
@@ -82,7 +89,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border/80">
       <SidebarHeader className="px-4 py-5">
-        <NavLink to="/" className="flex items-center gap-2">
+        <NavLink to="/" onClick={closeMobileSidebar} className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg gradient-primary flex items-center justify-center">
             <Code2 className="h-4 w-4 text-primary-foreground" />
           </div>
@@ -130,6 +137,7 @@ export function AppSidebar() {
             {!isSubscribed && (
               <NavLink
                 to="/subscription"
+                onClick={closeMobileSidebar}
                 className="flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/60 px-3 py-2 text-xs text-foreground hover:bg-secondary"
               >
                 <Crown className="h-3.5 w-3.5 text-amber-500" />

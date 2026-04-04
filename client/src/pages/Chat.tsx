@@ -40,7 +40,7 @@ const Chat = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-3.5rem)]">
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 w-full flex-col">
       <AiInput003 onSendMessage={handleMessage} />
     </div>
   );
