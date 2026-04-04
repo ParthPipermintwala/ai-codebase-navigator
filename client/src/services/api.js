@@ -15,7 +15,9 @@ const getStoredAuthToken = () => {
     if (typeof window === "undefined") {
       return "";
     }
-    return String(window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "").trim();
+    return String(
+      window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "",
+    ).trim();
   } catch {
     return "";
   }
