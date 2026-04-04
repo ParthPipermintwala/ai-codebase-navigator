@@ -268,16 +268,16 @@ const Impact = () => {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+    <div className="mx-auto max-w-7xl space-y-5 overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
       <motion.section
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl sm:rounded-[2rem]"
+        className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl sm:rounded-[2rem]"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.16),transparent_32%),radial-gradient(circle_at_bottom_left,hsl(173_80%_50%/0.14),transparent_40%)]" />
 
-        <div className="relative grid gap-0 xl:grid-cols-[1.1fr_0.9fr] xl:gap-8">
-          <div className="space-y-5 p-5 sm:p-6 md:p-8 xl:p-10">
+        <div className="relative grid min-w-0 gap-0 xl:grid-cols-[1.1fr_0.9fr] xl:gap-8">
+          <div className="min-w-0 space-y-5 p-5 sm:p-6 md:p-8 xl:p-10">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300">
               <Sparkles className="h-3.5 w-3.5" />
               Live simulation
@@ -310,7 +310,7 @@ const Impact = () => {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <input
                 value={target}
                 onChange={(event) => setTarget(event.target.value)}
@@ -320,7 +320,7 @@ const Impact = () => {
                   }
                 }}
                 placeholder="Enter file/module/function (e.g. auth.js)"
-                className="h-12 w-full rounded-2xl border border-border/70 bg-background/90 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-cyan-500"
+                className="h-12 w-full min-w-0 rounded-2xl border border-border/70 bg-background/90 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-cyan-500"
               />
               <button
                 type="button"
@@ -347,12 +347,12 @@ const Impact = () => {
             )}
           </div>
 
-          <div className="border-t border-border/60 p-6 sm:p-8 xl:border-l xl:border-t-0">
-            <div className="rounded-[1.75rem] border border-border/60 bg-card/90 p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 border-t border-border/60 p-5 sm:p-6 xl:border-l xl:border-t-0">
+            <div className="rounded-[1.75rem] border border-border/60 bg-card/90 p-4 shadow-sm sm:p-5">
+              <div className="flex items-start justify-between gap-3 sm:items-center">
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Simulation output</p>
-                  <h2 className="mt-1 text-xl font-semibold text-foreground">Blast radius</h2>
+                  <h2 className="mt-1 text-lg font-semibold text-foreground sm:text-xl">Blast radius</h2>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-500">
                   <ShieldAlert className="h-5 w-5" />
@@ -361,18 +361,18 @@ const Impact = () => {
 
               <div className="mt-5 rounded-2xl border border-border/60 bg-background/80 p-4">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Target</p>
-                <p className="mt-1 break-all font-mono text-sm text-cyan-300">
+                <p className="mt-1 break-words font-mono text-sm text-cyan-300">
                   {result?.target || target || "Select a file to start"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl border border-border/60 bg-background/80 p-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">Risk score</p>
                     <p className="mt-1 text-2xl font-bold text-foreground">{result ? formatRisk(riskScore) : "0%"}</p>
                   </div>
-                  <div className="w-24 rounded-full bg-muted/60 p-1">
+                  <div className="w-full rounded-full bg-muted/60 p-1 sm:w-24">
                     <div
                       className="h-2 rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500 transition-all duration-300"
                       style={{ width: result ? formatRisk(riskScore) : "0%" }}
@@ -399,15 +399,15 @@ const Impact = () => {
                       transition={{ delay: index * 0.05 }}
                       className={`rounded-2xl border px-4 py-3 ${toneStyles[node.tone]}`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-full border border-current/20 bg-background/80 text-xs font-semibold">
                           {index + 1}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">{node.label}</p>
-                          <p className="text-xs opacity-80">{node.note}</p>
+                          <p className="break-words text-sm font-medium leading-5">{node.label}</p>
+                          <p className="break-words text-xs opacity-80">{node.note}</p>
                         </div>
-                        {index < simulationNodes.length - 1 && <ChevronRight className="h-4 w-4 opacity-70" />}
+                        {index < simulationNodes.length - 1 && <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 opacity-70" />}
                       </div>
                     </motion.div>
                   ))
@@ -434,11 +434,11 @@ const Impact = () => {
       )}
 
       {!loading && result && (
-        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr] xl:gap-5">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[1.05fr_0.95fr] xl:gap-5">
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-4"
+            className="min-w-0 space-y-4"
           >
             <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
               <div className="flex items-start gap-3 sm:items-center">
@@ -462,7 +462,7 @@ const Impact = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm"
+                      className="min-w-0 rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-semibold text-foreground">{item.area}</h4>
@@ -475,7 +475,7 @@ const Impact = () => {
                         </span>
                       </div>
 
-                      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        <p className="mt-2 break-words text-sm leading-relaxed text-muted-foreground">
                         {item.description}
                       </p>
 
@@ -516,7 +516,7 @@ const Impact = () => {
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-4"
+            className="min-w-0 space-y-4"
           >
             <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
               <div className="flex items-start gap-3 sm:items-center">
@@ -533,7 +533,7 @@ const Impact = () => {
                 {normalizedImpact.map((item, index) => {
                   const fileTotal = Array.isArray(item.files) ? item.files.length : 0;
                   return (
-                    <div key={`${item.key}-risk`} className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm">
+                    <div key={`${item.key}-risk`} className="min-w-0 rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-medium text-foreground">{item.area}</p>
