@@ -1,7 +1,7 @@
 import { getIssues, getRawFileContent } from "./githubService.js";
 
-const MAX_FILES = 40;
-const MAX_FINDINGS = 12;
+const MAX_FILES = Number(process.env.BUG_DETECTOR_MAX_FILES || 0);
+const MAX_FINDINGS = Number(process.env.BUG_DETECTOR_MAX_FINDINGS || 0);
 const ISSUE_SIGNAL_LIMIT = 6;
 const TEST_FIXTURE_FILE = "test-fixture/bug-detector";
 
@@ -73,19 +73,66 @@ const scorePath = (filePath) => {
   return score;
 };
 
+const getFileName = (filePath) => {
+  const parts = String(filePath || "").split(/[\\/]/);
+  return parts[parts.length - 1].toLowerCase();
+};
+
+const isEnvironmentFile = (filePath) => {
+  const fileName = getFileName(filePath);
+  return (
+    fileName === ".env" ||
+    fileName.startsWith(".env.") ||
+    fileName === ".npmrc" ||
+    fileName === "credentials.json" ||
+    fileName === "service-account.json"
+  );
+};
+
+const isConfigOrSecretFile = (filePath) => {
+  const ext = getFileExtension(filePath);
+  return (
+    isEnvironmentFile(filePath) ||
+    [".json", ".yml", ".yaml", ".ini", ".toml"].includes(ext)
+  );
+};
+
+const isIgnoredNoisePath = (filePath) => {
+  const lower = String(filePath || "").toLowerCase();
+  const fileName = getFileName(filePath);
+  return (
+    /(^|[\\/])node_modules([\\/]|$)/.test(lower) ||
+    /(^|[\\/])\.git([\\/]|$)/.test(lower) ||
+    fileName === "package-lock.json" ||
+    fileName === "yarn.lock" ||
+    fileName === "pnpm-lock.yaml" ||
+    fileName === "bun.lockb"
+  );
+};
+
 const collectCandidateFiles = (structure, maxFiles = MAX_FILES) => {
   const paths = normalizeStructurePaths(structure);
   const unique = Array.from(new Set(paths));
 
-  return unique
-    .filter((path) => SOURCE_EXTENSIONS.has(getFileExtension(path)))
+  const ranked = unique
+    .filter((path) => !isIgnoredNoisePath(path))
+    .filter(
+      (path) =>
+        SOURCE_EXTENSIONS.has(getFileExtension(path)) ||
+        isConfigOrSecretFile(path),
+    )
     .map((path) => ({ path, score: scorePath(path) }))
     .sort(
       (left, right) =>
-        right.score - left.score || left.path.localeCompare(right.path),
-    )
-    .slice(0, maxFiles)
-    .map((entry) => entry.path);
+        (isEnvironmentFile(right.path) ? 40 : 0) -
+          (isEnvironmentFile(left.path) ? 40 : 0) ||
+        right.score - left.score ||
+        left.path.localeCompare(right.path),
+    );
+
+  return (
+    Number(maxFiles) > 0 ? ranked.slice(0, Number(maxFiles)) : ranked
+  ).map((entry) => entry.path);
 };
 
 const linesFromContent = (content) => String(content || "").split(/\r?\n/);
@@ -104,6 +151,17 @@ const makeSnippet = (lines, lineNumber, radius = 2) => {
 
 const createFindingId = (filePath, line, title) =>
   `${String(filePath || "unknown").toLowerCase()}:${line || 0}:${String(title || "finding").toLowerCase()}`;
+
+const TYPE_PRIORITY = {
+  "environment-exposure": 50,
+  "secret-exposure": 45,
+  security: 40,
+  "information-disclosure": 35,
+  repo_issue: 20,
+  logic: 10,
+  maintenance: 5,
+  "error-handling": 1,
+};
 
 const createFinding = ({
   type,
@@ -133,6 +191,141 @@ const createFinding = ({
   issueNumber,
   labels,
 });
+
+const isPlaceholderSecretValue = (value) => {
+  const text = String(value || "").trim();
+  if (!text) {
+    return true;
+  }
+
+  return /^(<.*>|your[-_ ]?||changeme|change_me|example|sample|test|dummy|placeholder|replace_me|replace-me|xxx+|__.+__|\$\{.+\})$/i.test(
+    text,
+  );
+};
+
+const isSensitiveConfigKey = (key) =>
+  /(^|[_-])(api[_-]?key|secret|password|private[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token|webhook[_-]?secret|token)([_-]|$)/i.test(
+    String(key || ""),
+  );
+
+const MONGODB_URI_PATTERN = /mongodb(?:\+srv)?:\/\/[^\s"'`]+/i;
+const MONGODB_URI_WITH_CREDENTIALS_PATTERN =
+  /mongodb(?:\+srv)?:\/\/[^\s"'`:@]+:[^\s"'`@]+@/i;
+
+const hasMongoConnectionString = (text) =>
+  MONGODB_URI_PATTERN.test(String(text || ""));
+const hasMongoCredentialsInUri = (text) =>
+  MONGODB_URI_WITH_CREDENTIALS_PATTERN.test(String(text || ""));
+
+const scanConfigLikeFile = (filePath, content) => {
+  const lines = linesFromContent(content);
+  const findings = [];
+  const fileName = getFileName(filePath);
+
+  if (isEnvironmentFile(filePath) && !fileName.startsWith(".env.example")) {
+    const secretLine = lines.findIndex((rawLine) => {
+      const line = rawLine.trim();
+      return (
+        line &&
+        !line.startsWith("#") &&
+        /\b[A-Z0-9_]+\s*=\s*.+/.test(line) &&
+        !/\b(?:example|sample|placeholder|your[_-]?|changeme|change_me)\b/i.test(
+          line,
+        )
+      );
+    });
+
+    findings.push(
+      createFinding({
+        type: "environment-exposure",
+        severity: "high",
+        title: "Environment file committed to repository",
+        description:
+          "This repository contains a live environment file or secret config file, which can expose API keys, tokens, or credentials.",
+        filePath,
+        line: secretLine >= 0 ? secretLine + 1 : 1,
+        recommendation:
+          "Remove real secrets from the repo, replace them with placeholder values, and keep the actual values only in deployment environment settings.",
+        confidence: "high",
+        evidence: fileName,
+        snippet: makeSnippet(lines, secretLine >= 0 ? secretLine + 1 : 1),
+      }),
+    );
+
+    return findings;
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = rawLine.trim();
+
+    if (!line || line.startsWith("#") || line.startsWith("//")) {
+      continue;
+    }
+
+    const envMatch = line.match(/^([A-Z0-9_\-]+)\s*=\s*(.+)$/);
+    const jsonMatch = line.match(
+      /^"?([A-Za-z0-9_\-]+)"?\s*:\s*"?([^",}#]+)"?,?$/,
+    );
+
+    const key = String((envMatch || jsonMatch)?.[1] || "").toLowerCase();
+    const value = String((envMatch || jsonMatch)?.[2] || "").trim();
+
+    if (!key || isPlaceholderSecretValue(value)) {
+      continue;
+    }
+
+    if (hasMongoConnectionString(value)) {
+      findings.push(
+        createFinding({
+          type: "secret-exposure",
+          severity: hasMongoCredentialsInUri(value) ? "high" : "medium",
+          title: hasMongoCredentialsInUri(value)
+            ? "MongoDB URI includes embedded username/password"
+            : "Hardcoded MongoDB URI in config",
+          description: hasMongoCredentialsInUri(value)
+            ? "The MongoDB connection string contains plaintext credentials in source-controlled config."
+            : "A MongoDB connection string is hardcoded in config and should typically be sourced from environment variables.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Move the full MongoDB URI to an environment variable (for example MONGODB_URI) and never commit credentials to repository files.",
+          confidence: "high",
+          evidence: line,
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+      continue;
+    }
+
+    if (
+      isSensitiveConfigKey(key) ||
+      /-----begin [a-z ]*private key-----/i.test(value) ||
+      /(ghp_|github_pat_|sk-[a-z0-9]{16,}|AIza[0-9A-Za-z\-_]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|xox[baprs]-[0-9A-Za-z-]+|eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,})/.test(
+        value,
+      )
+    ) {
+      findings.push(
+        createFinding({
+          type: "secret-exposure",
+          severity: "high",
+          title: "Secret-like value is stored in a config file",
+          description:
+            "This config file contains a secret-like value that should usually live in a deployment secret store or environment variable instead of source control.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Replace the value with a placeholder and load the real secret from an environment variable or secret manager at runtime.",
+          confidence: "high",
+          evidence: line,
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+  }
+
+  return findings;
+};
 
 const createTestFixtureFinding = () =>
   createFinding({
@@ -191,6 +384,14 @@ const isLikelyErrorLeak = (line) => {
     /(error\.message|errorText|stack|details|reason|response\.data|responseText|findError\.message|insertError\.message)/i.test(
       text,
     )
+  );
+};
+
+const isHardcodedMongoUriLine = (line) => {
+  const text = String(line || "");
+  return (
+    hasMongoConnectionString(text) &&
+    !/process\.env\.|import\.meta\.env\./i.test(text)
   );
 };
 
@@ -253,6 +454,28 @@ const scanJavaScriptLikeFile = (filePath, content) => {
           line: index + 1,
           recommendation:
             "Prefer escaped text rendering or sanitize the HTML through a trusted, audited sanitizer before insertion.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (isHardcodedMongoUriLine(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "secret-exposure",
+          severity: hasMongoCredentialsInUri(rawLine) ? "high" : "medium",
+          title: hasMongoCredentialsInUri(rawLine)
+            ? "MongoDB URI includes embedded username/password"
+            : "Hardcoded MongoDB connection URI",
+          description: hasMongoCredentialsInUri(rawLine)
+            ? "This MongoDB connection string includes plaintext credentials directly in code."
+            : "This code line hardcodes a MongoDB URI instead of loading it from environment variables.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Store MongoDB URI in environment variables and keep credentials out of source code and logs.",
           confidence: "high",
           evidence: rawLine.trim(),
           snippet: makeSnippet(lines, index + 1),
@@ -535,6 +758,10 @@ const scanPythonFile = (filePath, content) => {
 
 const scanTextFile = (filePath, content) => {
   const ext = getFileExtension(filePath);
+  if (isConfigOrSecretFile(filePath)) {
+    return scanConfigLikeFile(filePath, content);
+  }
+
   if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
     return scanJavaScriptLikeFile(filePath, content);
   }
@@ -594,7 +821,17 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
   const repo = String(repoData?.name || "").trim();
   const branch = String(repoData?.default_branch || "main").trim() || "main";
   const structurePaths = normalizeStructurePaths(repoData?.structure);
-  const candidateFiles = collectCandidateFiles(repoData?.structure, MAX_FILES);
+  const maxFiles =
+    Number.isFinite(Number(options?.maxFiles)) && Number(options?.maxFiles) > 0
+      ? Number(options.maxFiles)
+      : MAX_FILES;
+  const maxFindings =
+    Number.isFinite(Number(options?.maxFindings)) &&
+    Number(options?.maxFindings) > 0
+      ? Number(options.maxFindings)
+      : MAX_FINDINGS;
+
+  const candidateFiles = collectCandidateFiles(repoData?.structure, maxFiles);
   const includeTestFixture = Boolean(options?.includeTestFixture);
 
   const findings = [];
@@ -682,6 +919,12 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
   }
 
   deduped.sort((left, right) => {
+    const leftPriority = TYPE_PRIORITY[left.type] || 0;
+    const rightPriority = TYPE_PRIORITY[right.type] || 0;
+    if (rightPriority !== leftPriority) {
+      return rightPriority - leftPriority;
+    }
+
     const severityDelta =
       (SEVERITY_SCORE[right.severity] || 0) -
       (SEVERITY_SCORE[left.severity] || 0);
@@ -698,8 +941,9 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
     return String(left.title || "").localeCompare(String(right.title || ""));
   });
 
-  const topFindings = deduped.slice(0, MAX_FINDINGS);
-  const severityCounts = topFindings.reduce(
+  const finalFindings =
+    maxFindings > 0 ? deduped.slice(0, maxFindings) : deduped;
+  const severityCounts = finalFindings.reduce(
     (accumulator, finding) => {
       accumulator[finding.severity] = (accumulator[finding.severity] || 0) + 1;
       return accumulator;
@@ -716,14 +960,14 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
     summary: {
       scannedFiles: candidateFiles.length,
       sourceFiles: fileFindings.length,
-      totalFindings: topFindings.length,
+      totalFindings: finalFindings.length,
       high: severityCounts.high,
       medium: severityCounts.medium,
       low: severityCounts.low,
       issueSignals: openBugSignals.length,
       testFixtureEnabled: includeTestFixture,
     },
-    findings: topFindings,
+    findings: finalFindings,
     filesScanned: candidateFiles,
     sourceFiles: fileFindings,
     issueSignals: openBugSignals.slice(0, ISSUE_SIGNAL_LIMIT).map((issue) => ({
@@ -737,6 +981,10 @@ const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
     testFixtureEnabled: includeTestFixture,
     metadata: {
       structureFiles: structurePaths.length,
+      scanLimits: {
+        maxFiles: maxFiles > 0 ? maxFiles : "all",
+        maxFindings: maxFindings > 0 ? maxFindings : "all",
+      },
     },
   };
 };

@@ -72,8 +72,9 @@ const severityMeta: Record<BugFinding["severity"], { label: string; className: s
 
 const typeLabels: Record<string, string> = {
   security: "Security",
-  "information-disclosure": "Information Disclosure",
+  "environment-exposure": "Environment Exposure",
   "secret-exposure": "Secret Exposure",
+  "information-disclosure": "Information Disclosure",
   "error-handling": "Error Handling",
   logic: "Logic",
   maintenance: "Maintenance",
@@ -367,6 +368,10 @@ const BugDetector = () => {
                         </div>
 
                         <h3 className="mt-3 text-lg font-semibold text-foreground">{finding.title}</h3>
+                        <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-primary/90">
+                          Exact location: {finding.filePath || "Unknown file"}
+                          {finding.line ? `:${finding.line}` : ""}
+                        </p>
                         <div className="mt-2">
                           {renderDescription(finding.description)}
                         </div>
