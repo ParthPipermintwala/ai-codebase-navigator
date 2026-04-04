@@ -421,16 +421,20 @@ const extractRelatedFiles = (structure, target, maxFiles = 10) => {
       for (let i = 1; i < targetSegments.length; i++) {
         const shortTarget = targetSegments.slice(i).join("/").toLowerCase();
         const shortTargetDir = shortTarget + "/";
-        
+
         for (const path of paths) {
           const pathLower = path.toLowerCase();
-          if ((pathLower === shortTarget || pathLower.startsWith(shortTargetDir)) && !seen.has(path)) {
+          if (
+            (pathLower === shortTarget ||
+              pathLower.startsWith(shortTargetDir)) &&
+            !seen.has(path)
+          ) {
             result.push(path);
             seen.add(path);
             if (result.length >= maxFiles) break;
           }
         }
-        
+
         if (result.length >= maxFiles) break;
       }
     }
