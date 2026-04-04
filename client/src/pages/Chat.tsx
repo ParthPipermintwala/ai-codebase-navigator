@@ -3,10 +3,7 @@ import {
   AiInput003,
   type MentionType,
 } from "@/components/ai-input-003";
-
-const API_BASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
-  "http://localhost:3000";
+import { chatWithRepository } from "@/services/api";
 
 const Chat = () => {
   const [searchParams] = useSearchParams();
@@ -20,32 +17,7 @@ const Chat = () => {
         return "No repository selected. Analyze a repository first.";
       }
 
-      const res = await fetch(
-        `${API_BASE_URL}/api/chat/${encodeURIComponent(repoId)}`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            question: text,
-          }),
-        },
-      );
-
-      if (!res.ok) {
-        const err = await res.text();
-        console.error(err);
-        return {
-          answer: "Server error",
-          confidence: "low",
-          type: "inferred",
-          source: "inferred",
-        };
-      }
-
-      const data = await res.json();
+      const data = await chatWithRepository(repoId, text);
       return {
         answer: data?.answer || "Not found in repository.",
         confidence: data?.confidence || "low",

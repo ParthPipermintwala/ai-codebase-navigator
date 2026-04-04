@@ -8,17 +8,30 @@ import { authMiddleware } from "./middleware/authMiddleware.js";
 import { aiRouter, chatRouter } from "./routes/aiRoutes.js";
 
 const app = express();
+const DEV_ORIGINS = [
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+const ENV_ORIGINS = String(process.env.FRONTEND_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const ALLOWED_ORIGINS = Array.from(new Set([...DEV_ORIGINS, ...ENV_ORIGINS]));
+
 app.disable("x-powered-by");
 app.use(
   cors({
-    origin: [
-      "http://localhost:8080",
-      "http://127.0.0.1:8080",
-      "http://localhost:8081",
-      "http://127.0.0.1:8081",
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ],
+    origin(origin, callback) {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   }),
 );

@@ -1,6 +1,8 @@
 import "dotenv/config";
 import app from "./app.js";
 
+const PORT = Number(process.env.PORT || 3000);
+
 const startServer = async () => {
   try {
     console.log("📦 Initializing services...");
@@ -11,8 +13,8 @@ const startServer = async () => {
     console.log("✓ Services initialized!");
     console.log("🚀 Starting server...");
 
-    const server = app.listen(3000, () => {
-      console.log("✓ Server running on http://localhost:3000");
+    const server = app.listen(PORT, () => {
+      console.log(`✓ Server running on port ${PORT}`);
     });
 
     process.on("SIGINT", () => {
