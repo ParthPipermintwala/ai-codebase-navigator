@@ -22,6 +22,7 @@ import {
   getRepositoryStructureById,
   getRepositoryDependencyDataById,
   getRepositoryForAi,
+  getLatestRepositoryByOwnerAndName,
 } from "../services/supabaseService.js";
 import { generateEmbedding, upsertVectors } from "../services/vectorService.js";
 import { buildRepositoryMap } from "../services/mapService.js";
@@ -296,12 +297,19 @@ const analyzeRepository = async (req, res) => {
     const { repoUrl } = req.body || {};
     const { owner, repo } = normalizeRepoUrl(repoUrl);
     const cacheKey = `repo:user:${userId}:${owner}:${repo}`;
+    const sharedCacheKey = `repo:shared:${owner}:${repo}`;
     const user = await getUserById(userId);
     const githubToken = String(user?.github_token || "").trim() || null;
 
     const cached = await getCachedJson(cacheKey);
     if (cached) {
       return res.status(200).json(cached);
+    }
+
+    const sharedCached = await getCachedJson(sharedCacheKey);
+    if (sharedCached) {
+      await setCachedJson(cacheKey, sharedCached, CACHE_TTL_SECONDS);
+      return res.status(200).json(sharedCached);
     }
 
     const [metadata, contributors, commits, issues, languages] =
@@ -505,10 +513,49 @@ const analyzeRepository = async (req, res) => {
     };
 
     await setCachedJson(cacheKey, responsePayload, CACHE_TTL_SECONDS);
+    await setCachedJson(sharedCacheKey, responsePayload, CACHE_TTL_SECONDS);
     return res.status(200).json(responsePayload);
   } catch (error) {
     const message = error?.message || "Repository analysis failed";
     const statusCode = Number(error?.statusCode) || 500;
+
+    if (
+      statusCode === 429 &&
+      typeof req?.body?.repoUrl === "string" &&
+      req?.body?.repoUrl.trim()
+    ) {
+      try {
+        const { owner, repo } = normalizeRepoUrl(req.body.repoUrl);
+        const existing = await getLatestRepositoryByOwnerAndName(owner, repo);
+
+        if (existing) {
+          const { structure, created_at, ...safeExisting } = existing;
+          const responsePayload = {
+            repoId: String(safeExisting.id),
+            message: "Repository loaded from cache while GitHub rate limit is active",
+            remaining: "unlimited",
+            ...safeExisting,
+          };
+
+          await setCachedJson(
+            `repo:user:${req?.user?.userId}:${owner}:${repo}`,
+            responsePayload,
+            CACHE_TTL_SECONDS,
+          );
+          await setCachedJson(
+            `repo:shared:${owner}:${repo}`,
+            responsePayload,
+            CACHE_TTL_SECONDS,
+          );
+
+          return res.status(200).json(responsePayload);
+        }
+      } catch (fallbackError) {
+        console.warn("[analyzeRepository] rate-limit fallback failed", {
+          message: fallbackError?.message || String(fallbackError),
+        });
+      }
+    }
 
     console.error("[analyzeRepository] unhandled error", {
       message,

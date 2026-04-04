@@ -207,6 +207,36 @@ const getRepositoryForAi = async (repoId) => {
   return data;
 };
 
+const getLatestRepositoryByOwnerAndName = async (owner, name) => {
+  const normalizedOwner = String(owner || "").trim();
+  const normalizedName = String(name || "").trim();
+
+  if (!normalizedOwner || !normalizedName) {
+    throw new HttpError("Invalid owner/name provided", 400);
+  }
+
+  const { data, error } = await supabase
+    .from("repositories")
+    .select(REPOSITORY_DETAIL_FIELDS)
+    .eq("owner", normalizedOwner)
+    .eq("name", normalizedName)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw new HttpError(
+      `Supabase repository owner/name fetch failed: ${error.message}`,
+      500,
+    );
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
+    return null;
+  }
+
+  return data[0] || null;
+};
+
 const getUserById = async (userId) => {
   if (!userId || typeof userId !== "string" || !userId.trim()) {
     throw new HttpError("Invalid userId provided", 400);
@@ -286,6 +316,7 @@ export {
   getRepositoryStructureById,
   getRepositoryDependencyDataById,
   getRepositoryForAi,
+  getLatestRepositoryByOwnerAndName,
   getUserById,
   updateUserById,
   updateRepositorySummary,
