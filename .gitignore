@@ -81,3 +81,5 @@ backend/.env.*.local
 !.env.example
 !client/.env.example
 !backend/.env.example
+.vercel
+.env*.local

@@ -30,9 +30,13 @@ const normalizeGithubRedirectUri = (value) => {
     return fallback;
   }
 };
-const GITHUB_OAUTH_REDIRECT_URI =
-  normalizeGithubRedirectUri(process.env.GITHUB_OAUTH_REDIRECT_URI);
+const GITHUB_OAUTH_REDIRECT_URI = normalizeGithubRedirectUri(
+  process.env.GITHUB_OAUTH_REDIRECT_URI,
+);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8080";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const IS_HTTPS_FRONTEND = String(FRONTEND_URL).trim().startsWith("https://");
+const USE_CROSS_SITE_AUTH_COOKIE = IS_PRODUCTION || IS_HTTPS_FRONTEND;
 
 if (!JWT_SECRET || !COOKIE_SECRET) {
   throw new Error("Missing JWT_SECRET or COOKIE_SECRET environment variables");
@@ -49,17 +53,29 @@ const normalizeEmail = (email) =>
     .trim()
     .toLowerCase();
 
-const setAuthCookie = (res, userId) => {
-  const token = jwt.sign({ userId }, JWT_SECRET, {
+const createAuthToken = (userId) => {
+  return jwt.sign({ userId }, JWT_SECRET, {
     expiresIn: "7d",
   });
+};
+
+const setAuthCookie = (res, userId) => {
+  const token = createAuthToken(userId);
+
+  // Cross-site frontend/backend deployments require SameSite=None with Secure.
+  const cookieOptions = {
+    httpOnly: true,
+    secure: USE_CROSS_SITE_AUTH_COOKIE,
+    sameSite: USE_CROSS_SITE_AUTH_COOKIE ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: "/",
+  };
 
   res.cookie("authToken", token, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    ...cookieOptions,
   });
+
+  return token;
 };
 
 const ensureUserByEmail = async ({ email, name }) => {
@@ -226,11 +242,11 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    setAuthCookie(res, user.id);
+    const token = setAuthCookie(res, user.id);
 
     // Return user info
     const fullUser = await getUserById(String(user.id));
-    res.json({ user: sanitizeUser(fullUser || user) });
+    res.json({ user: sanitizeUser(fullUser || user), token });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -251,11 +267,9 @@ export const googleLogin = async (req, res) => {
 
     if (!accessToken) {
       if (!code || typeof code !== "string") {
-        return res
-          .status(400)
-          .json({
-            message: "Google authorization code or access token is required",
-          });
+        return res.status(400).json({
+          message: "Google authorization code or access token is required",
+        });
       }
 
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
@@ -328,11 +342,12 @@ export const googleLogin = async (req, res) => {
 
     const user = await ensureUserByEmail({ email, name });
     const fullUser = await getUserById(String(user.id));
-    setAuthCookie(res, user.id);
+    const token = setAuthCookie(res, user.id);
 
     return res.json({
       message: "Google login successful",
       user: sanitizeUser(fullUser || user),
+      token,
     });
   } catch (error) {
     console.error("Google login error:", error);
@@ -471,9 +486,12 @@ export const githubCallback = async (req, res) => {
 
     const name = String(profile?.name || profile?.login || "User").trim();
     const user = await ensureUserByEmail({ email, name });
-    setAuthCookie(res, user.id);
+    await updateUserById(String(user.id), { githubToken: String(accessToken) });
+    const token = setAuthCookie(res, user.id);
+    const redirectUrl = new URL(`${FRONTEND_URL}/oauth/callback`);
+    redirectUrl.hash = `token=${encodeURIComponent(token)}&next=${encodeURIComponent("/analyze")}`;
 
-    return res.redirect(`${FRONTEND_URL}/analyze`);
+    return res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error("GitHub callback error:", error);
     return res.redirect(`${FRONTEND_URL}/login?oauth=github_failed`);
@@ -638,10 +656,15 @@ export const verifyGithubToken = async (req, res) => {
 // Logout user
 export const logout = async (req, res) => {
   try {
-    res.clearCookie("authToken", {
+    const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      secure: USE_CROSS_SITE_AUTH_COOKIE,
+      sameSite: USE_CROSS_SITE_AUTH_COOKIE ? "none" : "lax",
+      path: "/",
+    };
+
+    res.clearCookie("authToken", {
+      ...cookieOptions,
     });
 
     res.json({ message: "Logged out successfully" });

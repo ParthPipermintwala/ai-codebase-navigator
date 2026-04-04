@@ -31,7 +31,7 @@ const signupSchema = z.object({
 const CreateAccount = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { registerUser } = useAuth();
+  const { registerUser, refreshUser } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,6 +81,7 @@ const CreateAccount = () => {
         setSocialLoading("google");
         setErrors({});
         await loginWithGoogleAccessToken(response.access_token);
+        await refreshUser();
         navigate("/analyze", { replace: true });
       } catch (error) {
         const message =

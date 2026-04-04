@@ -25,6 +25,7 @@ import SubscriptionSuccess from "./pages/SubscriptionSuccess";
 import Login from "./pages/Login";
 import CreateAccount from "./pages/CreateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
+import OAuthCallback from "./pages/OAuthCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="/register" element={<CreateAccount />} />
                 <Route path="/create-account" element={<CreateAccount />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route
                   path="/pricing"
                   element={

@@ -9,7 +9,12 @@ if (!JWT_SECRET) {
 
 export const authMiddleware = async (req, res, next) => {
   try {
-    const token = req.cookies.authToken;
+    const cookieToken = req.cookies?.authToken;
+    const authHeader = String(req.headers?.authorization || "").trim();
+    const bearerToken = authHeader.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice(7).trim()
+      : "";
+    const token = cookieToken || bearerToken;
 
     if (!token) {
       return res.status(401).json({ message: 'No token provided' });

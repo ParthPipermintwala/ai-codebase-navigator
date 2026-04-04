@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
@@ -10,10 +11,25 @@ export const ProtectedRoute = ({
   children,
   requiresSubscription = false,
 }: ProtectedRouteProps) => {
-  const { user, loading } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const location = useLocation();
+  const [checkingSession, setCheckingSession] = useState(false);
+  const hasRevalidatedSession = useRef(false);
 
-  if (loading) {
+  useEffect(() => {
+    if (loading || user || hasRevalidatedSession.current) {
+      return;
+    }
+
+    hasRevalidatedSession.current = true;
+    setCheckingSession(true);
+
+    refreshUser().finally(() => {
+      setCheckingSession(false);
+    });
+  }, [loading, user, refreshUser]);
+
+  if (loading || checkingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

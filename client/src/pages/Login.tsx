@@ -26,7 +26,7 @@ const loginSchema = z.object({
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginUser } = useAuth();
+  const { loginUser, refreshUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -75,6 +75,7 @@ const Login = () => {
         setSocialLoading("google");
         setErrors({});
         await loginWithGoogleAccessToken(response.access_token);
+        await refreshUser();
         const redirectTo = (location.state as any)?.from || "/analyze";
         navigate(redirectTo, { replace: true });
       } catch (error) {

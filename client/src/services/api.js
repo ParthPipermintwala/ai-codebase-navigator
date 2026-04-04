@@ -8,6 +8,37 @@ const API_SERVER_URL =
     ? String(import.meta.env.VITE_API_URL)
     : "https://ai-codebase-navigator-bpxc.onrender.com";
 
+const AUTH_TOKEN_STORAGE_KEY = "ai_code_nav_auth_token";
+
+const getStoredAuthToken = () => {
+  try {
+    if (typeof window === "undefined") {
+      return "";
+    }
+    return String(window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+};
+
+export const setStoredAuthToken = (token) => {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const trimmed = String(token || "").trim();
+    if (!trimmed) {
+      window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, trimmed);
+  } catch {
+    // Ignore storage exceptions.
+  }
+};
+
 export class ApiError extends Error {
   constructor(message, status, data) {
     super(message);
@@ -44,9 +75,14 @@ const toApiErrorMessage = (status, data) => {
 
 const buildHeaders = (headers, body) => {
   const nextHeaders = new Headers(headers || {});
+  const token = getStoredAuthToken();
 
   if (body !== undefined && !nextHeaders.has("Content-Type")) {
     nextHeaders.set("Content-Type", "application/json");
+  }
+
+  if (token && !nextHeaders.has("Authorization")) {
+    nextHeaders.set("Authorization", `Bearer ${token}`);
   }
 
   return nextHeaders;
@@ -86,6 +122,10 @@ const apiRequest = async (path, options = {}) => {
     data = await response.json();
   } catch {
     data = null;
+  }
+
+  if (data?.token && typeof data.token === "string") {
+    setStoredAuthToken(data.token);
   }
 
   if (!response.ok) {
@@ -146,6 +186,8 @@ export const verifyGithubToken = (token) =>
 export const logout = () =>
   apiRequest("/auth/logout", {
     method: "POST",
+  }).finally(() => {
+    setStoredAuthToken("");
   });
 
 export const createCheckoutSession = () =>
