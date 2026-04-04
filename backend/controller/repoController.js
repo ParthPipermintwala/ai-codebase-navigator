@@ -8,7 +8,6 @@ import {
   getLanguages,
   getRepoTree,
   filterRelevantFiles,
-  detectTechStack,
   getRawFileContent,
 } from "../services/githubService.js";
 import { getCachedJson, setCachedJson } from "../services/redisService.js";
@@ -25,10 +24,49 @@ import {
 import { generateEmbedding, upsertVectors } from "../services/vectorService.js";
 import { buildRepositoryMap } from "../services/mapService.js";
 import { extractDependenciesFromRepository } from "../services/dependencyService.js";
+import {
+  generateRepoTour,
+  getRepoImpactService,
+} from "../services/aiService.js";
 
 const CACHE_TTL_SECONDS = 60 * 60;
+const TOUR_CACHE_VERSION = 3;
 const MAX_FILES = 30;
 const FILE_PROCESS_BATCH_SIZE = 10;
+
+const NODE_MODULE_CORE_SKIP = new Set([
+  "fs",
+  "path",
+  "os",
+  "url",
+  "http",
+  "https",
+  "crypto",
+  "stream",
+  "events",
+  "util",
+  "buffer",
+  "child_process",
+  "zlib",
+  "net",
+  "tls",
+  "dns",
+  "assert",
+  "querystring",
+  "timers",
+  "readline",
+  "process",
+]);
+
+const SOURCE_EXTENSIONS = new Set([
+  ".py",
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+]);
 
 const safeArrayResult = async (request) => {
   try {
@@ -69,6 +107,23 @@ const createStructurePayload = (tree, selectedFiles) => {
   };
 };
 
+const toDependencyObject = (dependencyResponse) => {
+  const result = {};
+  const list = Array.isArray(dependencyResponse?.dependencies)
+    ? dependencyResponse.dependencies
+    : [];
+
+  for (const item of list) {
+    if (!item?.name) {
+      continue;
+    }
+
+    result[item.name] = item.version || null;
+  }
+
+  return result;
+};
+
 const runInBatches = async (items, batchSize, handler) => {
   const output = [];
 
@@ -84,6 +139,138 @@ const runInBatches = async (items, batchSize, handler) => {
   }
 
   return output;
+};
+
+const getFileExtension = (filePath) => {
+  const lower = String(filePath || "").toLowerCase();
+  const dotIndex = lower.lastIndexOf(".");
+  return dotIndex === -1 ? "" : lower.slice(dotIndex);
+};
+
+const normalizeNodeImportName = (specifier) => {
+  const value = String(specifier || "").trim();
+  if (!value || value.startsWith(".") || value.startsWith("/")) {
+    return null;
+  }
+
+  if (value.startsWith("node:")) {
+    return null;
+  }
+
+  const root = value.startsWith("@")
+    ? value.split("/").slice(0, 2).join("/")
+    : value.split("/")[0];
+
+  if (!root || NODE_MODULE_CORE_SKIP.has(root)) {
+    return null;
+  }
+
+  return root;
+};
+
+const normalizePythonImportName = (specifier) => {
+  const value = String(specifier || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  return value.split(".")[0] || null;
+};
+
+const extractTechFromSource = (filePath, content, stack) => {
+  const ext = getFileExtension(filePath);
+  const source = String(content || "");
+
+  if (!SOURCE_EXTENSIONS.has(ext) || !source.trim()) {
+    return;
+  }
+
+  if (ext === ".py") {
+    const lines = source.split(/\r?\n/);
+    for (const rawLine of lines) {
+      const line = rawLine.split("#")[0].trim();
+      if (!line) {
+        continue;
+      }
+
+      const importMatch = line.match(/^import\s+(.+)$/);
+      if (importMatch?.[1]) {
+        const parts = importMatch[1].split(",");
+        for (const part of parts) {
+          const name = normalizePythonImportName(part.split(/\s+as\s+/i)[0]);
+          if (name) {
+            stack.add(name);
+          }
+        }
+      }
+
+      const fromMatch = line.match(/^from\s+([a-zA-Z0-9_.]+)\s+import\s+/);
+      if (fromMatch?.[1]) {
+        const name = normalizePythonImportName(fromMatch[1]);
+        if (name) {
+          stack.add(name);
+        }
+      }
+    }
+
+    return;
+  }
+
+  const requireMatches = [...source.matchAll(/require\((['"`])([^'"`]+)\1\)/g)];
+  for (const match of requireMatches) {
+    const name = normalizeNodeImportName(match[2]);
+    if (name) {
+      stack.add(name);
+    }
+  }
+
+  const importMatches = [
+    ...source.matchAll(/import\s+(?:[^'"`]+\s+from\s+)?(['"`])([^'"`]+)\1/g),
+  ];
+  for (const match of importMatches) {
+    const name = normalizeNodeImportName(match[2]);
+    if (name) {
+      stack.add(name);
+    }
+  }
+};
+
+const collectActualTechStack = async (files, owner, repo, defaultBranch) => {
+  const stack = new Set();
+  const list = Array.isArray(files) ? files.slice(0, MAX_FILES) : [];
+
+  await runInBatches(list, FILE_PROCESS_BATCH_SIZE, async (file) => {
+    if (!file?.path) {
+      return null;
+    }
+
+    const ext = getFileExtension(file.path);
+    if (!SOURCE_EXTENSIONS.has(ext)) {
+      return null;
+    }
+
+    try {
+      const content = await getRawFileContent(
+        owner,
+        repo,
+        defaultBranch,
+        file.path,
+      );
+      if (!content) {
+        return null;
+      }
+
+      extractTechFromSource(file.path, content, stack);
+    } catch (error) {
+      console.warn(
+        `[repo:${owner}/${repo}] tech detection failed for ${file.path}: ${error?.message || String(error)}`,
+      );
+    }
+
+    return null;
+  });
+
+  return Array.from(stack).sort((left, right) => left.localeCompare(right));
 };
 
 const analyzeRepository = async (req, res) => {
@@ -118,7 +305,34 @@ const analyzeRepository = async (req, res) => {
     ).length;
 
     const selectedFiles = filterRelevantFiles(fullTree, MAX_FILES);
-    const techStack = detectTechStack(fullTree);
+    const structurePayload = createStructurePayload(fullTree, selectedFiles);
+
+    const structurePaths = fullTree
+      .filter((item) => item?.type === "blob" && item?.path)
+      .map((item) => item.path);
+
+    const dependencyResponse = await extractDependenciesFromRepository({
+      owner,
+      name: repo,
+      defaultBranch,
+      structure: structurePaths,
+    }).catch((error) => {
+      console.warn("[analyzeRepository] dependency extraction failed", {
+        owner,
+        repo,
+        message: error?.message || String(error),
+      });
+
+      return { type: "unknown", dependencies: [] };
+    });
+
+    const dependencies = toDependencyObject(dependencyResponse);
+    const techStack = await collectActualTechStack(
+      selectedFiles,
+      owner,
+      repo,
+      defaultBranch,
+    );
 
     console.log(
       `[repo:${owner}/${repo}] file selection total=${totalFiles} filtered=${selectedFiles.length}`,
@@ -136,7 +350,8 @@ const analyzeRepository = async (req, res) => {
       openIssues: metadata.open_issues_count,
       techStack,
       languages,
-      structure: createStructurePayload(fullTree, selectedFiles),
+      structure: structurePayload,
+      dependencies,
     });
 
     const repoId = String(repositoryRow.id);
@@ -474,10 +689,164 @@ const getDependencies = async (req, res) => {
   }
 };
 
+const getRepoTour = async (req, res) => {
+  try {
+    const { repoId } = req.params || {};
+    if (!repoId) {
+      return res.status(400).json({
+        success: false,
+        message: "repoId is required",
+      });
+    }
+
+    const cacheKey = `repo:tour:v${TOUR_CACHE_VERSION}:${repoId}`;
+    const cached = await getCachedJson(cacheKey);
+    if (cached?.steps) {
+      return res.status(200).json({
+        success: true,
+        tour: cached,
+        source: "cache",
+      });
+    }
+
+    const tour = await generateRepoTour(String(repoId));
+    await setCachedJson(cacheKey, tour, CACHE_TTL_SECONDS);
+
+    return res.status(200).json({
+      success: true,
+      tour,
+      source: "llm",
+    });
+  } catch (error) {
+    const message = error?.message || "Failed to generate repository tour";
+    const statusCode =
+      message.includes("not found") || message.includes("Repository")
+        ? 404
+        : Number(error?.statusCode) || 500;
+
+    console.error("[getRepoTour] error", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      repoId: req?.params?.repoId,
+    });
+
+    const fallbackTour = {
+      steps: [
+        {
+          title: "Repository Tour Unavailable",
+          description:
+            "Tour generation failed. Try running analysis again in a moment.",
+          files: [],
+        },
+      ],
+    };
+
+    if (statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      tour: fallbackTour,
+      source: "fallback",
+    });
+  }
+};
+
+const getRepoImpact = async (req, res) => {
+  try {
+    const { repoId } = req.params || {};
+    const rawTarget = req?.body?.target;
+    const target = String(rawTarget || "").trim();
+
+    if (!repoId) {
+      return res.status(400).json({
+        success: false,
+        message: "repoId is required",
+      });
+    }
+
+    if (!target) {
+      return res.status(400).json({
+        success: false,
+        message: "target is required",
+      });
+    }
+
+    const cacheKey = `repo:impact:${repoId}:${target.toLowerCase()}`;
+    const cached = await getCachedJson(cacheKey);
+    if (cached?.target && Array.isArray(cached?.impact)) {
+      return res.status(200).json({
+        success: true,
+        impact: cached,
+        source: "cache",
+      });
+    }
+
+    const impact = await getRepoImpactService(String(repoId), target);
+    await setCachedJson(cacheKey, impact, CACHE_TTL_SECONDS);
+
+    return res.status(200).json({
+      success: true,
+      impact,
+      source: "llm",
+    });
+  } catch (error) {
+    const message = error?.message || "Failed to analyze repository impact";
+    const normalizedMessage = String(message).toLowerCase();
+    const statusCode =
+      normalizedMessage.includes("not found") ||
+      normalizedMessage.includes("repository")
+        ? 404
+        : Number(error?.statusCode) || 500;
+
+    console.error("[getRepoImpact] error", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      repoId: req?.params?.repoId,
+      target: req?.body?.target,
+    });
+
+    if (statusCode === 404) {
+      return res.status(404).json({
+        success: false,
+        message: "Repository not found",
+      });
+    }
+
+    const target = String(req?.body?.target || "").trim() || "unknown";
+    const fallbackImpact = {
+      target,
+      impact: [
+        {
+          area: "Core",
+          description:
+            "Impact analysis is temporarily unavailable. Retry in a moment.",
+          severity: "medium",
+          files: [],
+        },
+      ],
+    };
+
+    return res.status(200).json({
+      success: true,
+      impact: fallbackImpact,
+      source: "fallback",
+    });
+  }
+};
+
 export {
   analyzeRepository,
   getRepository,
   getUserRepositories,
   getRepoMap,
   getDependencies,
+  getRepoTour,
+  getRepoImpact,
 };

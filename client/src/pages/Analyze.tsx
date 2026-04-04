@@ -108,6 +108,8 @@ const Analyze = () => {
         throw new Error("Server error");
       }
 
+      localStorage.removeItem("chatHistory");
+      window.dispatchEvent(new Event("chat-history-cleared"));
       setRepoId(String(nextRepoId));
       setRepoIdState(String(nextRepoId));
 

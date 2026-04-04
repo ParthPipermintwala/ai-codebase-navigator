@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import repoRouter from "./routes/repoRoutes.js";
 import authRouter from "./routes/authRoutes.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
+import { aiRouter, chatRouter } from "./routes/aiRoutes.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -18,7 +19,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/auth", authRouter);
-app.use("/api/repo",authMiddleware ,repoRouter);
+app.use("/api/repo", authMiddleware, repoRouter);
+app.use("/api/ai", aiRouter);
+app.use("/api", chatRouter);
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || err.status || 500;

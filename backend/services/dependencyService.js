@@ -418,13 +418,15 @@ const extractDependenciesFromRepository = async ({
   tech_stack,
 }) => {
   let detected = detectDependencyFile(structure);
+  const paths = normalizeStructurePaths(structure);
+  const hasPythonSource = paths.some((path) =>
+    String(path || "")
+      .toLowerCase()
+      .endsWith(".py"),
+  );
 
-  // Fallback: if Python in tech_stack but no dependency file detected, try common paths
-  if (
-    !detected.filePath &&
-    Array.isArray(tech_stack) &&
-    tech_stack.includes("Python")
-  ) {
+  // Fallback: if Python source exists but no dependency file detected, try common paths
+  if (!detected.filePath && hasPythonSource) {
     detected = {
       type: "python",
       filePath: "requirements.txt",

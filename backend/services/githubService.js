@@ -70,6 +70,13 @@ const githubRequest = async (path) => {
   });
 
   if (!response.ok) {
+    if (
+      response.status === 403 &&
+      response.headers.get("x-ratelimit-remaining") === "0"
+    ) {
+      throw new HttpError("GitHub API rate limit exceeded", 429);
+    }
+
     const message =
       response.status === 404
         ? "Repository not found"
@@ -206,6 +213,13 @@ const getRawFileContent = async (owner, repo, branch, filePath) => {
         "User-Agent": "ai-code-nav",
       },
     });
+
+    if (
+      response.status === 403 &&
+      response.headers.get("x-ratelimit-remaining") === "0"
+    ) {
+      throw new HttpError("GitHub raw content rate limit exceeded", 429);
+    }
 
     if (!response.ok) {
       return null;

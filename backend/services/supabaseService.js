@@ -2,9 +2,9 @@ import supabase from "../config/supabase.js";
 import { HttpError } from "./githubService.js";
 
 const REPOSITORY_DETAIL_FIELDS =
-  "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, structure, created_at";
+  "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, structure, dependencies, summary, created_at";
 const REPOSITORY_LIST_FIELDS =
-  "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, created_at";
+  "id, user_id, repo_url, name, owner, default_branch, description, stars, forks, watchers, open_issues, tech_stack, languages, dependencies, summary, created_at";
 
 const insertRepository = async ({
   repoUrl,
@@ -19,6 +19,7 @@ const insertRepository = async ({
   techStack,
   languages,
   structure,
+  dependencies,
 }) => {
   const payload = {
     repo_url: repoUrl,
@@ -33,16 +34,17 @@ const insertRepository = async ({
     tech_stack: techStack,
     languages,
     structure,
+    dependencies: dependencies || {},
   };
 
   const { data, error } = await supabase
     .from("repositories")
-    .insert(payload)
+    .upsert(payload, { onConflict: "repo_url" })
     .select()
     .single();
 
   if (error) {
-    throw new HttpError(`Supabase insert failed: ${error.message}`, 500);
+    throw new Error(`Supabase upsert failed: ${error.message}`);
   }
 
   return data;
@@ -128,7 +130,7 @@ const getRepositoriesByUserId = async (userId) => {
 const getRepositoryStructureById = async (repoId) => {
   const { data, error } = await supabase
     .from("repositories")
-    .select("structure")
+    .select("id, name, owner, description, structure, dependencies, summary")
     .eq("id", repoId)
     .single();
 
@@ -153,7 +155,9 @@ const getRepositoryDependencyDataById = async (repoId) => {
 
   const query = supabase
     .from("repositories")
-    .select("owner, name, default_branch, structure, tech_stack")
+    .select(
+      "owner, name, default_branch, structure, tech_stack, dependencies, summary",
+    )
     .eq("id", repoId);
 
   const { data, error } = await query.single();
@@ -173,6 +177,51 @@ const getRepositoryDependencyDataById = async (repoId) => {
   return data;
 };
 
+const getRepositoryForAi = async (repoId) => {
+  if (!repoId || typeof repoId !== "string" || !repoId.trim()) {
+    throw new HttpError("Invalid repoId provided", 400);
+  }
+
+  const { data, error } = await supabase
+    .from("repositories")
+    .select(
+      "id, name, owner, description, structure, dependencies, summary, tech_stack, default_branch, repo_url",
+    )
+    .eq("id", repoId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") {
+      return null;
+    }
+
+    throw new HttpError(
+      `Supabase repository AI fetch failed: ${error.message}`,
+      500,
+    );
+  }
+
+  return data;
+};
+
+const updateRepositorySummary = async (repoId, summary) => {
+  const { data, error } = await supabase
+    .from("repositories")
+    .update({ summary: summary || null })
+    .eq("id", repoId)
+    .select("id, summary")
+    .single();
+
+  if (error) {
+    throw new HttpError(
+      `Supabase repository summary update failed: ${error.message}`,
+      500,
+    );
+  }
+
+  return data;
+};
+
 export {
   insertRepository,
   bulkInsertContributors,
@@ -182,4 +231,6 @@ export {
   getRepositoriesByUserId,
   getRepositoryStructureById,
   getRepositoryDependencyDataById,
+  getRepositoryForAi,
+  updateRepositorySummary,
 };

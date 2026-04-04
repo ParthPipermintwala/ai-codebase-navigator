@@ -1,4 +1,7 @@
-const API_BASE_URL = "http://localhost:3000/api";
+const API_BASE_URL =
+  typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : "http://localhost:3000/api";
 
 export class ApiError extends Error {
   constructor(message, status, data) {
@@ -109,4 +112,21 @@ export const getRepositoryMap = (repoId) =>
 export const getDependencies = (repoId) =>
   apiRequest(`/repo/dependencies/${encodeURIComponent(repoId)}`, {
     method: "GET",
+  });
+
+export const getRepoTour = (repoId) =>
+  apiRequest(`/repo/tour/${encodeURIComponent(repoId)}`, {
+    method: "GET",
+  });
+
+export const getRepoImpact = (repoId, target) =>
+  apiRequest(`/repo/impact/${encodeURIComponent(repoId)}`, {
+    method: "POST",
+    body: { target },
+  });
+
+export const chatWithRepository = (repoId, question) =>
+  apiRequest(`/chat/${encodeURIComponent(repoId)}`, {
+    method: "POST",
+    body: { question },
   });
