@@ -28,14 +28,17 @@ export default function AiInput003Demo() {
         },
       );
 
-      const data = await response.json();
-
+      // ✅ FIX: Check response.ok BEFORE parsing JSON
       if (!response.ok) {
-        return data?.message || "Error fetching response";
+        console.error(`Chat API failed: ${response.status} ${response.statusText}`);
+        return "Server error. Please try again.";
       }
 
+      const data = await response.json();
       return data?.answer || "No response received.";
-    } catch {
+    } catch (err) {
+      // ✅ FIX: Log error details for debugging
+      console.error("Chat fetch error:", err);
       return "Error fetching response";
     }
   };

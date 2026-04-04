@@ -16,6 +16,7 @@ import {
   Files,
   FileCode2,
   ExternalLink,
+  TestTube,
 } from "lucide-react";
 
 interface BugFinding {
@@ -79,12 +80,48 @@ const typeLabels: Record<string, string> = {
 
 const formatLine = (line: number | null) => (line ? `Line ${line}` : "Line not available");
 
+// ✅ Helper: Format bug description with sections
+const renderDescription = (desc: string) => {
+  if (!desc.includes("\n")) return <p className="text-sm leading-7 text-muted-foreground">{desc}</p>;
+  
+  const sections = desc.split("\n").filter(s => s.trim());
+  return (
+    <div className="space-y-2 text-sm leading-7">
+      {sections.map((section, idx) => {
+        if (section.includes("EXACT ISSUE:") || section.includes("PROBLEM:") || section.includes("RESULT:")) {
+          return (
+            <div key={idx} className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-red-200">
+              <p>{section}</p>
+            </div>
+          );
+        }
+        if (section.includes("WHAT HAPPENS:") || section.includes("SHOULD BE:")) {
+          return (
+            <div key={idx} className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 text-yellow-200">
+              <p>{section}</p>
+            </div>
+          );
+        }
+        if (section.includes("FIX:") || section.includes("Example:")) {
+          return (
+            <div key={idx} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-emerald-200">
+              <p className="font-mono text-xs">{section}</p>
+            </div>
+          );
+        }
+        return <p key={idx} className="text-muted-foreground">{section}</p>;
+      })}
+    </div>
+  );
+};
+
 const BugDetector = () => {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [report, setReport] = useState<BugReport | null>(null);
   const [filter, setFilter] = useState<SeverityFilter>("all");
+  const [includeTestFixture, setIncludeTestFixture] = useState(false);
 
   const repoId = useMemo(
     () =>
@@ -106,7 +143,9 @@ const BugDetector = () => {
       setLoading(true);
       setError("");
 
-      const response = await getRepoBugs(repoId);
+      const response = await getRepoBugs(repoId, {
+        includeTestFixture,
+      });
       const bugReport = response?.bugReport || null;
 
       if (!bugReport) {
@@ -128,7 +167,7 @@ const BugDetector = () => {
   useEffect(() => {
     loadBugs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoId]);
+  }, [includeTestFixture, repoId]);
 
   const findings = useMemo(() => {
     const list = Array.isArray(report?.findings) ? report.findings : [];
@@ -153,6 +192,18 @@ const BugDetector = () => {
         title="Bug Detector"
         description="Scans real repository files and open GitHub issue signals to surface likely bugs, code risks, and unstable paths."
       >
+        <button
+          type="button"
+          onClick={() => setIncludeTestFixture((current) => !current)}
+          className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition-colors ${
+            includeTestFixture
+              ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+              : "border-border/70 bg-card text-foreground hover:bg-secondary"
+          }`}
+        >
+          <TestTube className="h-4 w-4" />
+          {includeTestFixture ? "Test fixture on" : "Enable test fixture"}
+        </button>
         <button
           type="button"
           onClick={loadBugs}
@@ -194,6 +245,11 @@ const BugDetector = () => {
                 <span className="rounded-full border border-border/60 bg-secondary/70 px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
                   {report.repository.branch || "main"}
                 </span>
+                {report.testFixtureEnabled && (
+                  <span className="rounded-full border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[11px] uppercase tracking-wide text-rose-300">
+                    test fixture
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -309,7 +365,9 @@ const BugDetector = () => {
                         </div>
 
                         <h3 className="mt-3 text-lg font-semibold text-foreground">{finding.title}</h3>
-                        <p className="mt-2 text-sm leading-7 text-muted-foreground">{finding.description}</p>
+                        <div className="mt-2">
+                          {renderDescription(finding.description)}
+                        </div>
                       </div>
 
                       <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
@@ -338,7 +396,15 @@ const BugDetector = () => {
                           </div>
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendation</p>
-                            <p className="mt-1 text-sm leading-6 text-muted-foreground">{finding.recommendation}</p>
+                            <div className="mt-1 space-y-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                              {finding.recommendation.includes("\n") ? (
+                                <pre className="text-xs leading-6 text-emerald-200 font-mono overflow-x-auto">
+                                  {finding.recommendation}
+                                </pre>
+                              ) : (
+                                <p className="text-sm leading-6 text-muted-foreground">{finding.recommendation}</p>
+                              )}
+                            </div>
                           </div>
                           {finding.issueNumber && (
                             <div>
@@ -433,6 +499,7 @@ const BugDetector = () => {
                 <li>• Flags risky code patterns, empty error handling, and unsafe constructs.</li>
                 <li>• Cross-checks open GitHub issues that look bug-related.</li>
                 <li>• Returns line references, snippets, and remediation steps.</li>
+                <li>• Optional test fixture can inject one known bug for UI validation.</li>
               </ul>
             </div>
           </div>

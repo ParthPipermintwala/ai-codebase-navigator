@@ -873,6 +873,9 @@ const getRepoImpact = async (req, res) => {
 const getRepoBugs = async (req, res) => {
   try {
     const { repoId } = req.params || {};
+    const includeTestFixture = Boolean(
+      req?.body?.includeTestFixture || req?.query?.includeTestFixture,
+    );
     if (!repoId) {
       return res.status(400).json({
         success: false,
@@ -880,7 +883,7 @@ const getRepoBugs = async (req, res) => {
       });
     }
 
-    const cacheKey = `repo:bugs:v1:${repoId}`;
+    const cacheKey = `repo:bugs:v2:${repoId}:${includeTestFixture ? "fixture" : "real"}`;
     const cached = await getCachedJson(cacheKey);
     if (cached?.findings) {
       return res.status(200).json({
@@ -903,7 +906,9 @@ const getRepoBugs = async (req, res) => {
       : null;
     const githubToken = String(user?.github_token || "").trim() || null;
 
-    const bugReport = await analyzeRepositoryBugs(repoData, githubToken);
+    const bugReport = await analyzeRepositoryBugs(repoData, githubToken, {
+      includeTestFixture,
+    });
     await setCachedJson(cacheKey, bugReport, CACHE_TTL_SECONDS);
 
     return res.status(200).json({
@@ -914,7 +919,9 @@ const getRepoBugs = async (req, res) => {
   } catch (error) {
     const message = error?.message || "Failed to analyze repository bugs";
     const normalizedMessage = String(message).toLowerCase();
-    const statusCode = normalizedMessage.includes("not found") ? 404 : Number(error?.statusCode) || 500;
+    const statusCode = normalizedMessage.includes("not found")
+      ? 404
+      : Number(error?.statusCode) || 500;
 
     console.error("[getRepoBugs] error", {
       message,

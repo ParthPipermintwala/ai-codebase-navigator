@@ -198,9 +198,10 @@ export const getRepoImpact = (repoId, target) =>
     body: { target },
   });
 
-export const getRepoBugs = (repoId) =>
+export const getRepoBugs = (repoId, options = {}) =>
   apiRequest(`/repo/bugs/${encodeURIComponent(repoId)}`, {
     method: "POST",
+    body: options,
   });
 
 export const chatWithRepository = (repoId, question) =>

@@ -3,6 +3,7 @@ import { getIssues, getRawFileContent } from "./githubService.js";
 const MAX_FILES = 40;
 const MAX_FINDINGS = 12;
 const ISSUE_SIGNAL_LIMIT = 6;
+const TEST_FIXTURE_FILE = "test-fixture/bug-detector";
 
 const SOURCE_EXTENSIONS = new Set([
   ".js",
@@ -31,7 +32,9 @@ const normalizeStructurePaths = (structure) => {
 
   if (structure && typeof structure === "object") {
     if (Array.isArray(structure.selected_files)) {
-      return structure.selected_files.filter((path) => typeof path === "string");
+      return structure.selected_files.filter(
+        (path) => typeof path === "string",
+      );
     }
 
     if (Array.isArray(structure.paths)) {
@@ -77,7 +80,10 @@ const collectCandidateFiles = (structure, maxFiles = MAX_FILES) => {
   return unique
     .filter((path) => SOURCE_EXTENSIONS.has(getFileExtension(path)))
     .map((path) => ({ path, score: scorePath(path) }))
-    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path))
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.path.localeCompare(right.path),
+    )
     .slice(0, maxFiles)
     .map((entry) => entry.path);
 };
@@ -89,7 +95,10 @@ const makeSnippet = (lines, lineNumber, radius = 2) => {
   const end = Math.min(lines.length, lineNumber + radius);
   return lines
     .slice(start, end)
-    .map((line, index) => `${String(start + index + 1).padStart(4, "0")} | ${line}`)
+    .map(
+      (line, index) =>
+        `${String(start + index + 1).padStart(4, "0")} | ${line}`,
+    )
     .join("\n");
 };
 
@@ -125,8 +134,27 @@ const createFinding = ({
   labels,
 });
 
+const createTestFixtureFinding = () =>
+  createFinding({
+    type: "security",
+    severity: "high",
+    title: "Synthetic bug fixture enabled",
+    description:
+      "This is a deliberately injected bug fixture used to verify the Bug Detector UI, filtering, and severity rendering.",
+    filePath: TEST_FIXTURE_FILE,
+    line: 42,
+    recommendation:
+      "Disable the fixture flag after testing and rely on real repository findings for normal scans.",
+    confidence: "high",
+    evidence: "fixture=true",
+    snippet:
+      "0040 | // synthetic fixture\n0041 | // used for UI testing\n0042 | const bugFixture = true;\n0043 | // remove after testing",
+  });
+
 const isHandlingKeywordPresent = (blockText) =>
-  /console\.(error|warn|log)|throw|return|setError|logger|notify|report|reject/i.test(blockText);
+  /console\.(error|warn|log)|throw|return|setError|logger|notify|report|reject/i.test(
+    blockText,
+  );
 
 const extractBlock = (lines, startIndex) => {
   const collected = [];
@@ -172,7 +200,10 @@ const scanJavaScriptLikeFile = (filePath, content) => {
       continue;
     }
 
-    if (/dangerouslySetInnerHTML/.test(rawLine) || /\binnerHTML\s*=/.test(rawLine)) {
+    if (
+      /dangerouslySetInnerHTML/.test(rawLine) ||
+      /\binnerHTML\s*=/.test(rawLine)
+    ) {
       findings.push(
         createFinding({
           type: "security",
@@ -211,20 +242,33 @@ const scanJavaScriptLikeFile = (filePath, content) => {
     }
 
     if (/\bfetch\s*\(/.test(rawLine)) {
-      const lookahead = lines.slice(index, Math.min(lines.length, index + 12)).join("\n");
-      if (/response\.json\s*\(/.test(lookahead) && !/response\.ok|!response\.ok|throw\s+new\s+Error|status\s*>=\s*400/.test(lookahead)) {
+      const lookahead = lines
+        .slice(index, Math.min(lines.length, index + 12))
+        .join("\n");
+
+      // ✅ Enhanced detection: .json() called BEFORE .ok check
+      const jsonIndex = lookahead.indexOf(".json()");
+      const okCheckIndex =
+        lookahead.indexOf("response.ok") + lookahead.indexOf("!response.ok");
+      const hasGuard =
+        /response\.ok|!response\.ok|throw\s+new\s+Error|status\s*>=\s*400|response\.status/.test(
+          lookahead,
+        );
+
+      // Only flag if .json() is found and NO guard exists before it
+      if (jsonIndex > -1 && !hasGuard) {
         findings.push(
           createFinding({
             type: "error-handling",
-            severity: "medium",
-            title: "Fetch response is parsed without status guard",
+            severity: "high",
+            title: "❌ CRITICAL: Fetch returns JSON before checking status",
             description:
-              "The request result is consumed without a visible HTTP status check, so non-2xx responses may be parsed as successful data.",
+              "EXACT ISSUE: Line calls .json() on response BEFORE checking if response.ok is true. If server returns error (4xx/5xx), parsing error HTML as JSON will crash the app.\n\nPROBLEM LINE: response.json() is called unconditionally\nSHOULD BE: Check if(response.ok) FIRST, then call response.json()",
             filePath,
             line: index + 1,
             recommendation:
-              "Check response.ok before parsing JSON and surface actionable errors for non-success responses.",
-            confidence: "medium",
+              "IMMEDIATE FIX:\n1. Check: if (!response.ok) { throw new Error(...) }\n2. Then: const data = await response.json()\n\nExample:\nconst res = await fetch(...)\nif (!res.ok) throw new Error(`API failed: ${res.status}`)\nconst data = await res.json()",
+            confidence: "high",
             evidence: rawLine.trim(),
             snippet: makeSnippet(lines, index + 1),
           }),
@@ -235,17 +279,19 @@ const scanJavaScriptLikeFile = (filePath, content) => {
     if (/catch\s*\([^)]*\)\s*\{/.test(rawLine) || /^catch\s*\{/.test(line)) {
       const block = extractBlock(lines, index);
       if (!isHandlingKeywordPresent(block.text)) {
+        const blockLines = block.text.split(/\r?\n/);
+        const problemSummary = blockLines.slice(0, 3).join(" ");
+
         findings.push(
           createFinding({
             type: "error-handling",
-            severity: "medium",
-            title: "Catch block appears to swallow errors",
-            description:
-              "This catch block does not visibly report, rethrow, or recover from the failure, which can hide runtime bugs.",
+            severity: "high",
+            title: "❌ CRITICAL: Catch block swallows error silently",
+            description: `EXACT ISSUE: This catch block on line ${index + 1} has NO error handling.\n\nWHAT HAPPENS: When code throws error, catch block executes: ${problemSummary}\n\nRESULT: Error is completely hidden! Debugging is impossible.\n\nPROBLEM: Users get silent failures, you get no logs, bugs hide in production.`,
             filePath,
             line: index + 1,
             recommendation:
-              "Log the error, rethrow it, or return a recoverable fallback so failures remain visible.",
+              "IMMEDIATE FIX: Add error handling inside catch:\n\ncatch (error) {\n  console.error('Operation failed:', error)  // ✅ Log it\n  throw error                                     // ✅ Re-throw for caller\n  // OR provide recovery: return fallbackValue\n}",
             confidence: "high",
             evidence: block.text.split(/\r?\n/)[0].trim(),
             snippet: makeSnippet(lines, index + 1),
@@ -330,7 +376,9 @@ const scanPythonFile = (filePath, content) => {
     }
 
     if (/^except\s+Exception(?:\s+as\s+\w+)?\s*:/.test(line)) {
-      const lookahead = lines.slice(index + 1, Math.min(lines.length, index + 5)).join("\n");
+      const lookahead = lines
+        .slice(index + 1, Math.min(lines.length, index + 5))
+        .join("\n");
       if (/^\s*pass\s*$/m.test(lookahead)) {
         findings.push(
           createFinding({
@@ -377,7 +425,9 @@ const summarizeIssueLabels = (issue) =>
 
 const isBugLikeIssue = (issue) => {
   const title = String(issue?.title || "").toLowerCase();
-  const labels = summarizeIssueLabels(issue).map((label) => label.toLowerCase());
+  const labels = summarizeIssueLabels(issue).map((label) =>
+    label.toLowerCase(),
+  );
 
   return (
     labels.some((label) => label.includes("bug") || label.includes("error")) ||
@@ -387,13 +437,18 @@ const isBugLikeIssue = (issue) => {
 
 const severityFromIssue = (issue) => {
   const title = String(issue?.title || "").toLowerCase();
-  const labels = summarizeIssueLabels(issue).map((label) => label.toLowerCase());
+  const labels = summarizeIssueLabels(issue).map((label) =>
+    label.toLowerCase(),
+  );
 
   if (labels.some((label) => label.includes("critical"))) {
     return "high";
   }
 
-  if (labels.some((label) => label.includes("bug")) || /crash|broken|exception/.test(title)) {
+  if (
+    labels.some((label) => label.includes("bug")) ||
+    /crash|broken|exception/.test(title)
+  ) {
     return "high";
   }
 
@@ -404,19 +459,26 @@ const severityFromIssue = (issue) => {
   return "low";
 };
 
-const analyzeRepositoryBugs = async (repoData, githubToken) => {
+const analyzeRepositoryBugs = async (repoData, githubToken, options = {}) => {
   const owner = String(repoData?.owner || "").trim();
   const repo = String(repoData?.name || "").trim();
   const branch = String(repoData?.default_branch || "main").trim() || "main";
   const structurePaths = normalizeStructurePaths(repoData?.structure);
   const candidateFiles = collectCandidateFiles(repoData?.structure, MAX_FILES);
+  const includeTestFixture = Boolean(options?.includeTestFixture);
 
   const findings = [];
   const fileFindings = [];
 
   for (const filePath of candidateFiles) {
     try {
-      const content = await getRawFileContent(owner, repo, branch, filePath, githubToken);
+      const content = await getRawFileContent(
+        owner,
+        repo,
+        branch,
+        filePath,
+        githubToken,
+      );
       if (!content || !String(content).trim()) {
         continue;
       }
@@ -436,7 +498,12 @@ const analyzeRepositoryBugs = async (repoData, githubToken) => {
     const issues = await getIssues(owner, repo, githubToken);
     openBugSignals = Array.isArray(issues)
       ? issues
-          .filter((issue) => issue?.state === "open" && !issue?.pull_request && isBugLikeIssue(issue))
+          .filter(
+            (issue) =>
+              issue?.state === "open" &&
+              !issue?.pull_request &&
+              isBugLikeIssue(issue),
+          )
           .slice(0, ISSUE_SIGNAL_LIMIT)
       : [];
   } catch {
@@ -452,7 +519,9 @@ const analyzeRepositoryBugs = async (repoData, githubToken) => {
         severity,
         title: `Open GitHub issue #${issue.number}: ${String(issue.title || "Untitled issue")}`,
         description:
-          String(issue.body || "").trim().slice(0, 240) ||
+          String(issue.body || "")
+            .trim()
+            .slice(0, 240) ||
           "This open issue is tagged or worded like a bug signal in the repository.",
         filePath: null,
         line: null,
@@ -478,14 +547,22 @@ const analyzeRepositoryBugs = async (repoData, githubToken) => {
     deduped.push(finding);
   }
 
+  if (includeTestFixture) {
+    deduped.unshift(createTestFixtureFinding());
+  }
+
   deduped.sort((left, right) => {
-    const severityDelta = (SEVERITY_SCORE[right.severity] || 0) - (SEVERITY_SCORE[left.severity] || 0);
+    const severityDelta =
+      (SEVERITY_SCORE[right.severity] || 0) -
+      (SEVERITY_SCORE[left.severity] || 0);
     if (severityDelta !== 0) {
       return severityDelta;
     }
 
     if ((left.filePath || "") !== (right.filePath || "")) {
-      return String(left.filePath || "").localeCompare(String(right.filePath || ""));
+      return String(left.filePath || "").localeCompare(
+        String(right.filePath || ""),
+      );
     }
 
     return String(left.title || "").localeCompare(String(right.title || ""));
@@ -514,6 +591,7 @@ const analyzeRepositoryBugs = async (repoData, githubToken) => {
       medium: severityCounts.medium,
       low: severityCounts.low,
       issueSignals: openBugSignals.length,
+      testFixtureEnabled: includeTestFixture,
     },
     findings: topFindings,
     filesScanned: candidateFiles,
@@ -526,6 +604,7 @@ const analyzeRepositoryBugs = async (repoData, githubToken) => {
       url: issue.html_url || null,
     })),
     source: "repository-scan",
+    testFixtureEnabled: includeTestFixture,
     metadata: {
       structureFiles: structurePaths.length,
     },
