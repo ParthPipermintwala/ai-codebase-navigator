@@ -883,7 +883,7 @@ const getRepoBugs = async (req, res) => {
       });
     }
 
-    const cacheKey = `repo:bugs:v2:${repoId}:${includeTestFixture ? "fixture" : "real"}`;
+    const cacheKey = `repo:bugs:v3:${repoId}:${includeTestFixture ? "fixture" : "real"}`;
     const cached = await getCachedJson(cacheKey);
     if (cached?.findings) {
       return res.status(200).json({

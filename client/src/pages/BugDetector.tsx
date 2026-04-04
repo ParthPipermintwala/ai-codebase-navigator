@@ -72,6 +72,8 @@ const severityMeta: Record<BugFinding["severity"], { label: string; className: s
 
 const typeLabels: Record<string, string> = {
   security: "Security",
+  "information-disclosure": "Information Disclosure",
+  "secret-exposure": "Secret Exposure",
   "error-handling": "Error Handling",
   logic: "Logic",
   maintenance: "Maintenance",

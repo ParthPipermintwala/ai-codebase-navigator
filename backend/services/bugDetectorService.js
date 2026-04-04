@@ -152,9 +152,47 @@ const createTestFixtureFinding = () =>
   });
 
 const isHandlingKeywordPresent = (blockText) =>
-  /console\.(error|warn|log)|throw|return|setError|logger|notify|report|reject/i.test(
+  /console\.(error|warn|log|info)|throw|logger|notify|report|reject|next\s*\(|res\.(status|json|send|end|redirect)/i.test(
     blockText,
   );
+
+const SENSITIVE_IDENTIFIER_PATTERN =
+  /(api[_-]?key|secret|token|password|private[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token)/i;
+
+const LEAK_CHANNEL_PATTERN =
+  /(console\.(log|info|warn|error)|res\.(json|send|status)|return\s+res\.|localStorage\.setItem|sessionStorage\.setItem|document\.cookie|window\.)/i;
+
+const isLikelySecretExposure = (line) => {
+  const text = String(line || "");
+  return (
+    SENSITIVE_IDENTIFIER_PATTERN.test(text) &&
+    LEAK_CHANNEL_PATTERN.test(text) &&
+    /(=|:)/.test(text) &&
+    !/process\.env\.|import\.meta\.env\.|os\.environ|os\.getenv/i.test(text)
+  );
+};
+
+const isLikelyDisclosureMessage = (line) => {
+  const text = String(line || "");
+  return (
+    /(errorMessage|message|details|reason)\s*[:=]/i.test(text) &&
+    /(error\.message|errorText|stack|response\.data|responseText|reason|findError\.message|insertError\.message)/i.test(
+      text,
+    )
+  );
+};
+
+const isLikelyErrorLeak = (line) => {
+  const text = String(line || "");
+  return (
+    /(res\.(json|send|status)|return\s+res\.|throw\s+new\s+Error|console\.(log|warn|error)|logger\.(error|warn))/i.test(
+      text,
+    ) &&
+    /(error\.message|errorText|stack|details|reason|response\.data|responseText|findError\.message|insertError\.message)/i.test(
+      text,
+    )
+  );
+};
 
 const extractBlock = (lines, startIndex) => {
   const collected = [];
@@ -222,6 +260,44 @@ const scanJavaScriptLikeFile = (filePath, content) => {
       );
     }
 
+    if (isLikelySecretExposure(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "security",
+          severity: "high",
+          title: "Secret or API key may be exposed",
+          description:
+            "This line appears to send, log, or persist a sensitive credential such as an API key, token, password, or private key.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Keep secrets server-side only. Do not log them, return them to the client, or store them in browser-accessible state.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (isLikelyDisclosureMessage(rawLine) || isLikelyErrorLeak(rawLine)) {
+      findings.push(
+        createFinding({
+          type: "information-disclosure",
+          severity: "high",
+          title: "Sensitive error details may be disclosed",
+          description:
+            "This line appears to expose internal error details, upstream service reasons, or stack data to logs or user-facing responses.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Return a generic user-facing message, keep detailed diagnostics in server logs, and avoid forwarding raw exception text or stack traces.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
     if (/\beval\s*\(/.test(rawLine) || /\bnew Function\s*\(/.test(rawLine)) {
       findings.push(
         createFinding({
@@ -278,20 +354,24 @@ const scanJavaScriptLikeFile = (filePath, content) => {
 
     if (/catch\s*\([^)]*\)\s*\{/.test(rawLine) || /^catch\s*\{/.test(line)) {
       const block = extractBlock(lines, index);
-      if (!isHandlingKeywordPresent(block.text)) {
-        const blockLines = block.text.split(/\r?\n/);
-        const problemSummary = blockLines.slice(0, 3).join(" ");
+      const blockText = block.text;
+      const hasMeaningfulHandling = isHandlingKeywordPresent(blockText);
+      const isEffectivelyEmpty = !/\S/.test(
+        blockText.replace(/catch\s*\([^)]*\)\s*\{|catch\s*\{/g, ""),
+      );
 
+      if (!hasMeaningfulHandling && isEffectivelyEmpty) {
         findings.push(
           createFinding({
             type: "error-handling",
-            severity: "high",
-            title: "❌ CRITICAL: Catch block swallows error silently",
-            description: `EXACT ISSUE: This catch block on line ${index + 1} has NO error handling.\n\nWHAT HAPPENS: When code throws error, catch block executes: ${problemSummary}\n\nRESULT: Error is completely hidden! Debugging is impossible.\n\nPROBLEM: Users get silent failures, you get no logs, bugs hide in production.`,
+            severity: "medium",
+            title: "Empty catch block hides failures",
+            description:
+              "This catch block does not log, rethrow, or recover from the failure, so the runtime error can disappear without a trace.",
             filePath,
             line: index + 1,
             recommendation:
-              "IMMEDIATE FIX: Add error handling inside catch:\n\ncatch (error) {\n  console.error('Operation failed:', error)  // ✅ Log it\n  throw error                                     // ✅ Re-throw for caller\n  // OR provide recovery: return fallbackValue\n}",
+              "Log the error, rethrow it, or return a safe fallback so the failure stays visible.",
             confidence: "high",
             evidence: block.text.split(/\r?\n/)[0].trim(),
             snippet: makeSnippet(lines, index + 1),
@@ -349,6 +429,56 @@ const scanPythonFile = (filePath, content) => {
           line: index + 1,
           recommendation:
             "Catch explicit exception types and handle or re-raise them with useful context.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (
+      /(api[_-]?key|secret|token|password|private[_-]?key|client[_-]?secret|access[_-]?token|auth[_-]?token)\s*[:=]\s*['"`][^'"`]{8,}['"`]/i.test(
+        line,
+      ) &&
+      !/process\.env\.|os\.environ|os\.getenv/i.test(line)
+    ) {
+      findings.push(
+        createFinding({
+          type: "security",
+          severity: "high",
+          title: "Hardcoded secret detected",
+          description:
+            "A credential-like value appears to be hardcoded directly in the source code.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Move secrets into environment variables or a secret manager and load them server-side only.",
+          confidence: "high",
+          evidence: rawLine.trim(),
+          snippet: makeSnippet(lines, index + 1),
+        }),
+      );
+    }
+
+    if (
+      /(res\.(json|send)|return\s+res\.|throw\s+new\s+Error|console\.(log|warn|error))/i.test(
+        rawLine,
+      ) &&
+      /(error\.message|errorText|stack|details|reason|response\.data|responseText|findError\.message|insertError\.message)/i.test(
+        rawLine,
+      )
+    ) {
+      findings.push(
+        createFinding({
+          type: "information-disclosure",
+          severity: "high",
+          title: "Sensitive error details may be disclosed",
+          description:
+            "This line appears to expose internal exception text or upstream service details in logs or a user-facing response.",
+          filePath,
+          line: index + 1,
+          recommendation:
+            "Use a generic user-facing message and keep the detailed error only in server logs.",
           confidence: "high",
           evidence: rawLine.trim(),
           snippet: makeSnippet(lines, index + 1),
