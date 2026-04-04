@@ -88,6 +88,24 @@ const GENERIC_IMPLEMENTATION_HINTS = [
   "animated component",
 ];
 
+const BUG_ANALYSIS_HINTS = [
+  "find bug",
+  "find bugs",
+  "bug",
+  "bugs",
+  "debug",
+  "issue",
+  "issues",
+  "error",
+  "errors",
+  "failing",
+  "failure",
+  "broken",
+  "crash",
+  "fix bug",
+  "locate bug",
+];
+
 const detectIntent = (question) => {
   const normalized = String(question || "").toLowerCase();
 
@@ -160,6 +178,10 @@ const buildQuestionHints = (question, intent = "general") => {
 const isRepoScopedQuestion = (question, intent = "general") => {
   const normalized = String(question || "").toLowerCase();
   if (!normalized) {
+    return true;
+  }
+
+  if (BUG_ANALYSIS_HINTS.some((hint) => normalized.includes(hint))) {
     return true;
   }
 
@@ -762,7 +784,7 @@ const chatWithRepo = async (req, res) => {
     const normalizedQuestion = question.trim();
     const intent = detectIntent(normalizedQuestion);
     const repoScoped = isRepoScopedQuestion(normalizedQuestion, intent);
-    const cacheKey = `repo:chat:v3:${repoId}:${encodeURIComponent(normalizedQuestion)}`;
+    const cacheKey = `repo:chat:v4:${repoId}:${encodeURIComponent(normalizedQuestion)}`;
     const cached = await getCachedJson(cacheKey);
     if (cached?.answer) {
       return res.status(200).json({
