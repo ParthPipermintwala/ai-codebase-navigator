@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Code2, Github, Mail, Lock, User, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { getGithubLoginUrl, loginWithGoogleCode } from "@/services/api";
+import { getGithubLoginUrl, loginWithGoogleAccessToken } from "@/services/api";
 
 const signupSchema = z.object({
   name: z
@@ -68,19 +68,19 @@ const CreateAccount = () => {
   }, [location.pathname, location.search, location.state, navigate]);
 
   const googleLogin = useGoogleLogin({
-    flow: "auth-code",
+    flow: "implicit",
     ux_mode: "popup",
     scope: "openid email profile",
     onSuccess: async (response) => {
-      if (!response?.code) {
-        setErrors({ general: "Google login failed: authorization code missing" });
+      if (!response?.access_token) {
+        setErrors({ general: "Google login failed: access token missing" });
         return;
       }
 
       try {
         setSocialLoading("google");
         setErrors({});
-        await loginWithGoogleCode(response.code);
+        await loginWithGoogleAccessToken(response.access_token);
         navigate("/analyze", { replace: true });
       } catch (error) {
         const message =
@@ -191,7 +191,7 @@ const CreateAccount = () => {
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Full Name</label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input value={name} onChange={(e) => { setName(e.target.value); setErrors(prev => ({...prev, name: ""})); }} placeholder="John Doe" className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11" />
+                <Input value={name} onChange={(e) => { setName(e.target.value); setErrors(prev => ({...prev, name: ""})); }} placeholder="username" className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground h-11" />
               </div>
               {errors.name && <p className="text-xs text-destructive mt-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> {errors.name}</p>}
             </div>

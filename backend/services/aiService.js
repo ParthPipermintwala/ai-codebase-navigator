@@ -175,6 +175,43 @@ const generateChatAnswer = async (
   );
 };
 
+const generateGeneralAnswer = async (question, options = {}) => {
+  const techStack = Array.isArray(options?.techStack) ? options.techStack : [];
+  const prompt = [
+    "You are a senior software engineer helping with implementation questions.",
+    "Provide a direct, practical answer.",
+    "When the user asks for code, include runnable code.",
+    "Prefer concise explanations and production-friendly defaults.",
+    "If relevant, mention trade-offs and next steps briefly.",
+    "Use plain text sections when useful:",
+    "Summary:",
+    "Key Points:",
+    "Code:",
+    "",
+    `Question: ${String(question || "").trim()}`,
+    "",
+    "Optional project hint (may be unrelated):",
+    techStack.length > 0
+      ? `Detected tech stack: ${techStack.join(", ")}`
+      : "Detected tech stack: N/A",
+  ].join("\n");
+
+  return callChatCompletion(
+    [
+      {
+        role: "system",
+        content:
+          "You are a practical coding assistant. Provide useful implementation-ready answers.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    { maxTokens: 500 },
+  );
+};
+
 const pickImportantFiles = (structure, maxFiles = 8) => {
   const paths = normalizeStructurePaths(structure);
   if (!paths.length) {
@@ -380,82 +417,238 @@ const sanitizeImpactItem = (item, allowedFiles = []) => {
   };
 };
 
-const extractRelatedFiles = (structure, target, maxFiles = 10) => {
-  const paths = normalizeStructurePaths(structure)
-    .map((path) => String(path || "").trim())
+const SOURCE_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".ts",
+  ".tsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+]);
+
+const splitPath = (value) =>
+  String(value || "")
+    .split("/")
     .filter(Boolean);
-  if (!paths.length) {
+
+const getDirectoryPath = (path) => {
+  const segments = splitPath(path);
+  return segments.slice(0, -1).join("/");
+};
+
+const getFileExtension = (path) => {
+  const fileName = splitPath(path).pop() || "";
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex === -1 ? "" : fileName.slice(dotIndex).toLowerCase();
+};
+
+const normalizeSlashes = (value) =>
+  String(value || "")
+    .replace(/\\/g, "/")
+    .trim();
+
+const toPathVariants = (candidate) => {
+  const normalized = normalizeSlashes(candidate);
+  if (!normalized) {
     return [];
   }
 
-  const normalizedTarget = String(target || "")
-    .trim()
-    .toLowerCase();
+  const variants = new Set([normalized]);
+  const hasExtension = Boolean(getFileExtension(normalized));
 
-  // Normalize target to always end with / for directory matching
-  let targetDir = normalizedTarget.endsWith("/")
-    ? normalizedTarget
-    : normalizedTarget + "/";
-
-  const result = [];
-  const seen = new Set();
-
-  // First pass: exact match with full path
-  for (const path of paths) {
-    const pathLower = path.toLowerCase();
-    const isExactMatch = pathLower === normalizedTarget;
-    const isUnderDir = pathLower.startsWith(targetDir);
-
-    if ((isExactMatch || isUnderDir) && !seen.has(path)) {
-      result.push(path);
-      seen.add(path);
-      if (result.length >= maxFiles) break;
+  if (!hasExtension) {
+    for (const ext of SOURCE_EXTENSIONS) {
+      variants.add(`${normalized}${ext}`);
+      variants.add(`${normalized}/index${ext}`);
     }
   }
 
-  // Second pass: if no exact match, try matching with just the last segments
-  if (result.length === 0) {
-    const targetSegments = normalizedTarget.split("/").filter(Boolean);
-    if (targetSegments.length > 1) {
-      // Try matching with fewer parent segments (in case repo name is included)
-      for (let i = 1; i < targetSegments.length; i++) {
-        const shortTarget = targetSegments.slice(i).join("/").toLowerCase();
-        const shortTargetDir = shortTarget + "/";
+  return Array.from(variants);
+};
 
-        for (const path of paths) {
-          const pathLower = path.toLowerCase();
-          if (
-            (pathLower === shortTarget ||
-              pathLower.startsWith(shortTargetDir)) &&
-            !seen.has(path)
-          ) {
-            result.push(path);
-            seen.add(path);
-            if (result.length >= maxFiles) break;
-          }
-        }
+const resolveLocalImportPath = (fromFile, importPath, knownFilesSet) => {
+  const trimmed = String(importPath || "").trim();
+  if (!trimmed.startsWith(".")) {
+    return null;
+  }
 
-        if (result.length >= maxFiles) break;
+  const fromDir = getDirectoryPath(fromFile);
+  const fromSegments = splitPath(fromDir);
+  const importSegments = splitPath(trimmed);
+  const stack = [...fromSegments];
+
+  for (const segment of importSegments) {
+    if (segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      stack.pop();
+      continue;
+    }
+    stack.push(segment);
+  }
+
+  const baseCandidate = stack.join("/");
+  const variants = toPathVariants(baseCandidate);
+  for (const variant of variants) {
+    if (knownFilesSet.has(variant)) {
+      return variant;
+    }
+  }
+
+  return null;
+};
+
+const extractImportSpecifiers = (filePath, content) => {
+  const specs = new Set();
+  const text = String(content || "");
+  const ext = getFileExtension(filePath);
+
+  if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
+    const importFromRegex =
+      /(?:import|export)\s+(?:[^"'`]+?\s+from\s+)?["'`]([^"'`]+)["'`]/g;
+    const requireRegex = /require\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+    const dynamicImportRegex = /import\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+
+    for (const regex of [importFromRegex, requireRegex, dynamicImportRegex]) {
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const spec = String(match[1] || "").trim();
+        if (spec) specs.add(spec);
       }
     }
   }
 
-  return result;
+  if (ext === ".py") {
+    const pyImportRegex = /^\s*import\s+([a-zA-Z0-9_\.]+)/gm;
+    const pyFromRegex = /^\s*from\s+([a-zA-Z0-9_\.]+)\s+import\s+/gm;
+
+    let match;
+    while ((match = pyImportRegex.exec(text)) !== null) {
+      const spec = String(match[1] || "").trim();
+      if (spec) specs.add(spec);
+    }
+    while ((match = pyFromRegex.exec(text)) !== null) {
+      const spec = String(match[1] || "").trim();
+      if (spec) specs.add(spec);
+    }
+  }
+
+  return Array.from(specs);
 };
 
-const buildImpactFallback = (target, relatedFiles) => {
-  return {
-    target,
-    impact: [
-      {
-        area: "Core",
-        description:
-          "Could not generate AI impact details. Review dependent modules manually.",
-        severity: "medium",
-        files: relatedFiles.slice(0, 4),
-      },
-    ],
+const isSourceFile = (filePath) =>
+  SOURCE_EXTENSIONS.has(getFileExtension(filePath));
+
+const resolveTargetFiles = (structure, target, maxFiles = 8) => {
+  const paths = normalizeStructurePaths(structure)
+    .map((path) => normalizeSlashes(path))
+    .filter(Boolean);
+
+  if (!paths.length) {
+    return [];
+  }
+
+  const normalizedTarget = normalizeSlashes(target).toLowerCase();
+  const isDirectoryHint =
+    normalizedTarget.endsWith("/") || !getFileExtension(normalizedTarget);
+  const withoutTrailingSlash = normalizedTarget.replace(/\/+$/, "");
+  const targetBase =
+    splitPath(withoutTrailingSlash).pop() || withoutTrailingSlash;
+
+  const matches = [];
+  const seen = new Set();
+  const push = (path) => {
+    if (!path || seen.has(path)) return;
+    seen.add(path);
+    matches.push(path);
   };
+
+  for (const path of paths) {
+    const lower = path.toLowerCase();
+    if (lower === normalizedTarget || lower.endsWith(`/${normalizedTarget}`)) {
+      push(path);
+    }
+  }
+
+  if (isDirectoryHint) {
+    const dirPrefix = `${withoutTrailingSlash}/`;
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      if (lower.startsWith(dirPrefix) || lower.includes(`/${dirPrefix}`)) {
+        push(path);
+      }
+    }
+  }
+
+  if (matches.length === 0 && targetBase) {
+    for (const path of paths) {
+      const lower = path.toLowerCase();
+      if (lower.endsWith(`/${targetBase}`) || lower === targetBase) {
+        push(path);
+      }
+    }
+  }
+
+  return matches.slice(0, maxFiles);
+};
+
+const inferAreaFromPath = (filePath) => {
+  const lower = String(filePath || "").toLowerCase();
+  if (
+    lower.startsWith("client/") ||
+    lower.includes("/components/") ||
+    lower.endsWith(".tsx") ||
+    lower.endsWith(".jsx")
+  ) {
+    return "UI";
+  }
+
+  if (
+    lower.includes("/routes/") ||
+    lower.includes("/controller/") ||
+    lower.includes("/middleware/") ||
+    lower.includes("server") ||
+    lower.includes("api")
+  ) {
+    return "API";
+  }
+
+  if (
+    lower.includes("/config/") ||
+    lower.includes("/models/") ||
+    lower.includes("redis") ||
+    lower.includes("supabase") ||
+    lower.includes("database") ||
+    lower.includes("db")
+  ) {
+    return "Database";
+  }
+
+  return "Core";
+};
+
+const makeImpactDescription = ({
+  directCount,
+  dependentCount,
+  dependencyCount,
+}) => {
+  const parts = [];
+  parts.push(
+    `${directCount} direct target file${directCount === 1 ? "" : "s"}`,
+  );
+  if (dependentCount > 0) {
+    parts.push(
+      `${dependentCount} upstream dependent file${dependentCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (dependencyCount > 0) {
+    parts.push(
+      `${dependencyCount} direct dependency file${dependencyCount === 1 ? "" : "s"}`,
+    );
+  }
+  return `${parts.join(", ")} detected from repository imports.`;
 };
 
 const getRepoImpactService = async (repoId, target) => {
@@ -475,79 +668,142 @@ const getRepoImpactService = async (repoId, target) => {
     throw new Error("Repository not found");
   }
 
-  const techStack = Array.isArray(repoData?.tech_stack)
-    ? repoData.tech_stack
-    : [];
-  const relatedFiles = extractRelatedFiles(
-    repoData?.structure,
-    normalizedTarget,
-    10,
+  const structurePaths = normalizeStructurePaths(repoData?.structure)
+    .map((path) => normalizeSlashes(path))
+    .filter(Boolean);
+
+  const targetFiles = resolveTargetFiles(structurePaths, normalizedTarget, 10);
+  if (targetFiles.length === 0) {
+    throw new Error(
+      `Target not found in repository structure: ${normalizedTarget}`,
+    );
+  }
+
+  const candidateFiles = structurePaths.filter(isSourceFile).slice(0, 180);
+  const knownFilesSet = new Set(candidateFiles);
+
+  const graph = new Map();
+  const reverseGraph = new Map();
+  for (const filePath of candidateFiles) {
+    graph.set(filePath, new Set());
+    reverseGraph.set(filePath, new Set());
+  }
+
+  const owner = String(repoData?.owner || "").trim();
+  const repo = String(repoData?.name || "").trim();
+  const branch = String(repoData?.default_branch || "main").trim() || "main";
+
+  for (const filePath of candidateFiles) {
+    try {
+      const content = await getRawFileContent(owner, repo, branch, filePath);
+      const specs = extractImportSpecifiers(filePath, content);
+      for (const spec of specs) {
+        const resolved = resolveLocalImportPath(filePath, spec, knownFilesSet);
+        if (!resolved || !graph.has(filePath) || !reverseGraph.has(resolved)) {
+          continue;
+        }
+        graph.get(filePath).add(resolved);
+        reverseGraph.get(resolved).add(filePath);
+      }
+    } catch {
+      // Skip unreadable files and keep best-effort graph.
+    }
+  }
+
+  const dependentFiles = new Set();
+  const queue = [...targetFiles];
+  const visited = new Set(queue);
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    const parents = reverseGraph.get(current) || new Set();
+    for (const parent of parents) {
+      if (visited.has(parent)) {
+        continue;
+      }
+      visited.add(parent);
+      dependentFiles.add(parent);
+      queue.push(parent);
+    }
+  }
+
+  const directDependencies = new Set();
+  for (const targetFile of targetFiles) {
+    const deps = graph.get(targetFile) || new Set();
+    for (const dep of deps) {
+      if (!targetFiles.includes(dep)) {
+        directDependencies.add(dep);
+      }
+    }
+  }
+
+  const allTouched = Array.from(
+    new Set([
+      ...targetFiles,
+      ...Array.from(dependentFiles),
+      ...Array.from(directDependencies),
+    ]),
   );
 
-  const context = [
-    `Repository: ${repoData?.name || "Unknown"}`,
-    `Target: ${normalizedTarget}`,
-    `Tech Stack: ${techStack.join(", ") || "N/A"}`,
-    `Relevant Files (ONLY use these files in your response): ${relatedFiles.join(", ") || "N/A"}`,
-  ].join("\n");
-
-  const prompt = [
-    "Return ONLY JSON in this exact shape:",
-    '{"target":"string","impact":[{"area":"UI / API / Core / Database","description":"what will break or change","severity":"high | medium | low","files":["file1","file2"]}]}',
-    "Rules:",
-    "- No markdown",
-    "- No explanation outside JSON",
-    "- Keep answer concise",
-    "- Max 5 impact points",
-    "- Must be specific to target",
-    "- CRITICAL: Only reference files from the 'Relevant Files' list. Do NOT invent files outside this list.",
-    "- Use only provided context",
-    "",
-    context,
-  ].join("\n");
-
-  try {
-    const responseText = await callChatCompletion(
-      [
-        {
-          role: "system",
-          content: "You output strict JSON for repository impact analysis.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      {
-        model: "openai/gpt-4o-mini",
-        maxTokens: 400,
-      },
-    );
-
-    const parsed = extractJsonPayload(responseText);
-    const rawItems = Array.isArray(parsed?.impact)
-      ? parsed.impact.slice(0, 5)
-      : [];
-    const impact = rawItems
-      .map((item) => sanitizeImpactItem(item, relatedFiles))
-      .filter((item) => item.description);
-
-    if (impact.length > 0) {
-      return {
-        target:
-          String(parsed?.target || normalizedTarget).trim() || normalizedTarget,
-        impact,
-      };
+  const areaGroups = new Map();
+  for (const filePath of allTouched) {
+    const area = inferAreaFromPath(filePath);
+    if (!areaGroups.has(area)) {
+      areaGroups.set(area, []);
     }
-  } catch (error) {
-    console.error("[getRepoImpactService] AI generation failed", {
-      repoId: normalizedRepoId,
-      target: normalizedTarget,
-      message: error?.message || String(error),
+    areaGroups.get(area).push(filePath);
+  }
+
+  const areaOrder = ["Core", "API", "UI", "Database"];
+  const impact = [];
+  for (const area of areaOrder) {
+    const files = (areaGroups.get(area) || []).slice(0, 6);
+    if (files.length === 0) {
+      continue;
+    }
+
+    const severity =
+      area === "Core"
+        ? "high"
+        : dependentFiles.size >= 5
+          ? "high"
+          : dependentFiles.size >= 2
+            ? "medium"
+            : "low";
+
+    impact.push({
+      area,
+      description: makeImpactDescription({
+        directCount: targetFiles.length,
+        dependentCount: dependentFiles.size,
+        dependencyCount: directDependencies.size,
+      }),
+      severity,
+      files,
     });
   }
 
-  return buildImpactFallback(normalizedTarget, relatedFiles);
+  const normalizedImpact = impact
+    .slice(0, 5)
+    .map((item) => sanitizeImpactItem(item, structurePaths));
+
+  if (normalizedImpact.length === 0) {
+    throw new Error(
+      "No dependency-based impact could be computed for this target",
+    );
+  }
+
+  return {
+    target: normalizedTarget,
+    impact: normalizedImpact,
+    source: "dependency-graph",
+    meta: {
+      targetFiles,
+      dependentFiles: Array.from(dependentFiles).slice(0, 30),
+      directDependencies: Array.from(directDependencies).slice(0, 30),
+      analyzedSourceFiles: candidateFiles.length,
+    },
+  };
 };
 
 const generateRepoTour = async (repoId) => {
@@ -707,6 +963,7 @@ const generateRepoTour = async (repoId) => {
 export {
   generateSummary,
   generateChatAnswer,
+  generateGeneralAnswer,
   normalizeStructurePaths,
   generateRepoTour,
   getRepoImpactService,

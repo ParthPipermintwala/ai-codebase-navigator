@@ -23,6 +23,10 @@ const toApiErrorMessage = (status, data) => {
     return backendMessage;
   }
 
+  if (status === 402) {
+    return "Subscription required";
+  }
+
   if (status === 404) {
     return "Repo not found";
   }
@@ -107,6 +111,12 @@ export const loginWithGoogleCode = (code) =>
     body: { code },
   });
 
+export const loginWithGoogleAccessToken = (accessToken) =>
+  apiRequest("/auth/google", {
+    method: "POST",
+    body: { accessToken },
+  });
+
 export const getGithubLoginUrl = () =>
   `${API_SERVER_URL}/api/auth/github/start`;
 
@@ -137,6 +147,19 @@ export const logout = () =>
   apiRequest("/auth/logout", {
     method: "POST",
   });
+
+export const createCheckoutSession = () =>
+  apiRequest("/payment/create-checkout-session", {
+    method: "POST",
+  });
+
+export const confirmCheckoutSession = (sessionId) =>
+  apiRequest(
+    `/payment/confirm-session?session_id=${encodeURIComponent(sessionId)}`,
+    {
+      method: "GET",
+    },
+  );
 
 export const analyzeRepository = (repoUrl) =>
   apiRequest("/repo/analyze", {

@@ -1,7 +1,15 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
-export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+type ProtectedRouteProps = {
+  children: React.ReactNode;
+  requiresSubscription?: boolean;
+};
+
+export const ProtectedRoute = ({
+  children,
+  requiresSubscription = false,
+}: ProtectedRouteProps) => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
@@ -18,6 +26,16 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (requiresSubscription && !user.isSubscribed) {
+    return (
+      <Navigate
+        to="/subscription"
+        replace
+        state={{ returnTo: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   return <>{children}</>;

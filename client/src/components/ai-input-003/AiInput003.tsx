@@ -19,7 +19,10 @@ export interface MessageReply01 {
     | "summary"
     | "inferred"
     | "context"
-    | "cache";
+    | "cache"
+    | "file_match"
+    | "deterministic"
+    | "general_llm";
 }
 
 interface AiInput003Props {
@@ -38,7 +41,10 @@ interface AiInput003Props {
           | "summary"
           | "inferred"
           | "context"
-          | "cache";
+          | "cache"
+          | "file_match"
+          | "deterministic"
+          | "general_llm";
       }
     | string
   > | {
@@ -52,10 +58,377 @@ interface AiInput003Props {
       | "summary"
       | "inferred"
       | "context"
-      | "cache";
+      | "cache"
+      | "file_match"
+      | "deterministic"
+      | "general_llm";
   } | string;
   placeholder?: string;
 }
+
+const sourceLabelMap: Record<string, string> = {
+  tech_stack: "Tech Stack",
+  code: "Code Context",
+  dependencies: "Dependencies",
+  summary: "Repository Summary",
+  inferred: "Inference",
+  context: "Repository Context",
+  cache: "Cached Answer",
+  file_match: "File Match",
+  deterministic: "Deterministic",
+  general_llm: "General LLM",
+};
+
+const sourceIconMap: Record<string, string> = {
+  tech_stack: "🧱",
+  code: "</>",
+  dependencies: "📦",
+  summary: "📝",
+  inferred: "🧠",
+  context: "📚",
+  cache: "🕘",
+  file_match: "📄",
+  deterministic: "✅",
+  general_llm: "🤖",
+};
+
+const getConfidenceBadgeClass = (confidence?: MessageReply01["confidence"]) => {
+  if (confidence === "high") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
+  }
+  if (confidence === "low") {
+    return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+  }
+  return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+};
+
+const getSourceBadgeClass = (source?: MessageReply01["source"]) => {
+  if (source === "cache") {
+    return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300";
+  }
+  if (source === "inferred") {
+    return "border-orange-500/30 bg-orange-500/10 text-orange-300";
+  }
+  return "border-neutral-500/40 bg-neutral-700/40 text-neutral-200";
+};
+
+const getTrustBanner = (msg: MessageReply01) => {
+  const isLowConfidence = msg.confidence === "low";
+  const inferredOnly = msg.type === "inferred" && msg.source === "inferred";
+
+  if (!isLowConfidence && !inferredOnly) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+      Low confidence response. Verify with repository files before applying changes.
+    </div>
+  );
+};
+
+type AnswerBlock =
+  | { type: "heading"; text: string; level: number }
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "code"; language: string; code: string }
+  | { type: "source"; text: string };
+
+type TableBlock = {
+  type: "table";
+  headers: string[];
+  rows: string[][];
+};
+
+type ParsedBlock = AnswerBlock | TableBlock;
+
+const normalizeTableCells = (line: string) =>
+  line
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter((cell, index, cells) => !(index === 0 && cell === "") && !(index === cells.length - 1 && cell === ""));
+
+const isTableSeparatorRow = (line: string) => {
+  const cells = normalizeTableCells(line);
+  if (cells.length < 2) {
+    return false;
+  }
+
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+};
+
+const isTableRow = (line: string) => {
+  const cells = normalizeTableCells(line);
+  return cells.length >= 2;
+};
+
+const parseInlineFragments = (text: string) => {
+  const value = String(text || "");
+  const fragments: Array<{ type: "text" | "bold" | "code"; text: string }> = [];
+  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      fragments.push({ type: "text", text: value.slice(lastIndex, match.index) });
+    }
+
+    const token = match[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      fragments.push({ type: "bold", text: token.slice(2, -2) });
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      fragments.push({ type: "code", text: token.slice(1, -1) });
+    } else {
+      fragments.push({ type: "text", text: token });
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < value.length) {
+    fragments.push({ type: "text", text: value.slice(lastIndex) });
+  }
+
+  if (fragments.length === 0) {
+    fragments.push({ type: "text", text: value });
+  }
+
+  return fragments;
+};
+
+const renderInlineText = (text: string, keyPrefix: string) =>
+  parseInlineFragments(text).map((fragment, index) => {
+    if (fragment.type === "bold") {
+      return (
+        <strong key={`${keyPrefix}-bold-${index}`} className="font-semibold text-gray-100">
+          {fragment.text}
+        </strong>
+      );
+    }
+
+    if (fragment.type === "code") {
+      return (
+        <code
+          key={`${keyPrefix}-code-${index}`}
+          className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-300"
+        >
+          {fragment.text}
+        </code>
+      );
+    }
+
+    return <span key={`${keyPrefix}-text-${index}`}>{fragment.text}</span>;
+  });
+
+const getHeadingClassName = (level: number) => {
+  if (level <= 1) {
+    return "text-xl font-bold text-gray-50 sm:text-2xl";
+  }
+
+  if (level === 2) {
+    return "text-lg font-semibold text-gray-100 sm:text-xl";
+  }
+
+  if (level === 3) {
+    return "text-base font-semibold text-gray-100 sm:text-lg";
+  }
+
+  if (level === 4) {
+    return "text-sm font-semibold uppercase tracking-wide text-gray-200";
+  }
+
+  if (level === 5) {
+    return "text-sm font-medium text-gray-200";
+  }
+
+  return "text-xs font-medium uppercase tracking-wide text-gray-300";
+};
+
+const parseAnswerBlocks = (text: string): ParsedBlock[] => {
+  const value = String(text || "").trim();
+  if (!value) {
+    return [];
+  }
+
+  const lines = value.split(/\r?\n/);
+  const blocks: ParsedBlock[] = [];
+  let paragraphBuffer: string[] = [];
+  let listBuffer: string[] = [];
+  let codeBuffer: string[] = [];
+  let codeLanguage = "";
+  let inCodeBlock = false;
+  let tableBuffer: string[] = [];
+
+  const flushTable = () => {
+    if (tableBuffer.length < 2) {
+      tableBuffer = [];
+      return;
+    }
+
+    const [headerLine, separatorLine, ...rowLines] = tableBuffer;
+    if (!isTableSeparatorRow(separatorLine)) {
+      tableBuffer = [];
+      return;
+    }
+
+    const headers = normalizeTableCells(headerLine);
+    const rows = rowLines
+      .filter((rowLine) => isTableRow(rowLine))
+      .map((rowLine) => normalizeTableCells(rowLine));
+
+    if (headers.length > 0 && rows.length > 0) {
+      blocks.push({ type: "table", headers, rows });
+    }
+
+    tableBuffer = [];
+  };
+
+  const flushParagraph = () => {
+    if (paragraphBuffer.length > 0) {
+      blocks.push({ type: "paragraph", text: paragraphBuffer.join(" ").trim() });
+      paragraphBuffer = [];
+    }
+  };
+
+  const flushList = () => {
+    if (listBuffer.length > 0) {
+      blocks.push({ type: "list", items: listBuffer });
+      listBuffer = [];
+    }
+  };
+
+  const flushCode = () => {
+    if (codeBuffer.length > 0) {
+      blocks.push({
+        type: "code",
+        language: codeLanguage.trim(),
+        code: codeBuffer.join("\n"),
+      });
+      codeBuffer = [];
+      codeLanguage = "";
+    }
+  };
+
+  const pushHeading = (textLine: string) => {
+    const cleaned = textLine.trim();
+    if (!cleaned) {
+      return;
+    }
+
+    const headingMatch = cleaned.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      blocks.push({
+        type: "heading",
+        text: headingMatch[2].trim(),
+        level: headingMatch[1].length,
+      });
+      return;
+    }
+
+    const sectionMatch = cleaned.match(/^(summary|key\s*points?|code|source)\s*:?(.*)$/i);
+    if (sectionMatch) {
+      blocks.push({
+        type: "heading",
+        text: sectionMatch[1].replace(/\s+/g, " "),
+        level: 3,
+      });
+      const trailing = sectionMatch[2].trim().replace(/^[-•*]\s+/, "");
+      if (trailing) {
+        blocks.push({ type: "paragraph", text: trailing });
+      }
+      return;
+    }
+
+    blocks.push({ type: "heading", text: cleaned });
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, "");
+    const trimmed = line.trim();
+
+    const fenceMatch = trimmed.match(/^```\s*([a-z0-9_-]+)?\s*$/i);
+    if (fenceMatch) {
+      if (inCodeBlock) {
+        flushParagraph();
+        flushList();
+        flushTable();
+        flushCode();
+        inCodeBlock = false;
+      } else {
+        flushParagraph();
+        flushList();
+        flushTable();
+        inCodeBlock = true;
+        codeLanguage = fenceMatch[1] || "";
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+      continue;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      continue;
+    }
+
+    const looksLikeTableRow = trimmed.includes("|") && isTableRow(trimmed);
+    if (looksLikeTableRow) {
+      flushParagraph();
+      flushList();
+      tableBuffer.push(trimmed);
+      continue;
+    }
+
+    if (tableBuffer.length > 0) {
+      flushTable();
+    }
+
+    if (/^(#{1,6})\s+/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      pushHeading(trimmed);
+      continue;
+    }
+
+    const sectionCandidate = trimmed.match(/^(summary|key\s*points?|code|source)\s*:?(.*)$/i);
+    if (sectionCandidate) {
+      flushParagraph();
+      flushList();
+      flushTable();
+      pushHeading(trimmed);
+      continue;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*•]\s+(.+)$/);
+    const numberedMatch = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (bulletMatch || numberedMatch) {
+      flushParagraph();
+      flushTable();
+      listBuffer.push((bulletMatch?.[1] || numberedMatch?.[1] || "").trim());
+      continue;
+    }
+
+    flushList();
+    flushTable();
+    paragraphBuffer.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  flushTable();
+  if (inCodeBlock) {
+    flushCode();
+  }
+
+  return blocks;
+};
 
 const MentionBadge: React.FC<{ type: MentionType; compact?: boolean }> = ({
   type,
@@ -103,124 +476,105 @@ const MentionBadge: React.FC<{ type: MentionType; compact?: boolean }> = ({
 };
 
 const renderAnswerContent = (text: string) => {
-  const value = String(text || "").trim();
-  if (!value) {
+  const blocks = parseAnswerBlocks(text);
+  if (blocks.length === 0) {
     return null;
   }
-
-  const lines = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const getSectionName = (line: string): "summary" | "keyPoints" | "source" | null => {
-    const match = line.match(/^[*\-•]?\s*(summary|key\s*points?|source)\s*:?\s*(.*)$/i);
-    if (!match) {
-      return null;
-    }
-
-    const name = match[1].toLowerCase().replace(/\s+/g, "");
-    if (name.startsWith("summary")) return "summary";
-    if (name.startsWith("key")) return "keyPoints";
-    if (name.startsWith("source")) return "source";
-    return null;
-  };
-
-  const sections: {
-    summary: string[];
-    keyPoints: string[];
-    source: string[];
-  } = {
-    summary: [],
-    keyPoints: [],
-    source: [],
-  };
-
-  let currentSection: "summary" | "keyPoints" | "source" | null = null;
-
-  for (const rawLine of lines) {
-    const detected = getSectionName(rawLine);
-    if (detected) {
-      currentSection = detected;
-      const trailing = rawLine.replace(/^[*\-•]?\s*(summary|key\s*points?|source)\s*:?\s*/i, "").trim();
-      if (trailing) {
-        sections[detected].push(trailing.replace(/^[*\-•]\s+/, ""));
-      }
-      continue;
-    }
-
-    const cleaned = rawLine.replace(/^[*\-•]\s+/, "").trim();
-    if (!cleaned) {
-      continue;
-    }
-
-    if (currentSection) {
-      sections[currentSection].push(cleaned);
-    } else {
-      sections.summary.push(cleaned);
-    }
-  }
-
-  const hasStructuredSections =
-    sections.summary.length > 0 ||
-    sections.keyPoints.length > 0 ||
-    sections.source.length > 0;
-
-  if (hasStructuredSections) {
-    return (
-      <div className="space-y-4">
-        {sections.summary.length > 0 && (
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-gray-200">Summary</h3>
-            <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-gray-400">
-              {sections.summary.join("\n")}
-            </p>
-          </div>
-        )}
-
-        {sections.keyPoints.length > 0 && (
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-gray-200">Key Points</h3>
-            <ul className="ml-5 list-disc space-y-1 text-sm text-gray-400">
-              {sections.keyPoints.map((point, index) => (
-                <li key={`${point}-${index}`}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {sections.source.length > 0 && (
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-gray-200">Source</h3>
-            <ul className="text-sm text-blue-400">
-              {sections.source.map((item, index) => (
-                <li key={`${item}-${index}`}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const bulletLines = lines.filter((line) => /^[-*]\s+/.test(line));
-
-  if (bulletLines.length > 0) {
-    return (
-      <ul className="space-y-1 pl-4 text-sm text-gray-300">
-        {lines.map((line, index) => {
-          const bulletText = line.replace(/^[-*]\s+/, "");
+  return (
+    <div className="space-y-4">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          const headingLevel = Math.min(Math.max(block.level, 1), 6);
+          const HeadingTag = (`h${Math.min(headingLevel + 1, 6)}` as keyof JSX.IntrinsicElements);
           return (
-            <li key={`${line}-${index}`} className="list-disc">
-              {bulletText}
-            </li>
+            <HeadingTag key={`${block.type}-${index}`} className={getHeadingClassName(headingLevel)}>
+              {renderInlineText(block.text, `${block.type}-${index}`)}
+            </HeadingTag>
           );
-        })}
-      </ul>
-    );
-  }
+        }
 
-  return <p className="whitespace-pre-line text-sm text-gray-300">{value}</p>;
+        if (block.type === "paragraph") {
+          return (
+            <p key={`${block.type}-${index}`} className="whitespace-pre-wrap text-xs leading-relaxed text-gray-300 sm:text-sm">
+              {renderInlineText(block.text, `${block.type}-${index}`)}
+            </p>
+          );
+        }
+
+        if (block.type === "source") {
+          return (
+            <p key={`${block.type}-${index}`} className="text-xs font-medium text-blue-400 sm:text-sm">
+              {renderInlineText(block.text, `${block.type}-${index}`)}
+            </p>
+          );
+        }
+
+        if (block.type === "list") {
+          return (
+            <ul key={`${block.type}-${index}`} className="space-y-1 pl-5 text-xs text-gray-300 sm:text-sm">
+              {block.items.map((item, itemIndex) => (
+                <li key={`${item}-${itemIndex}`} className="list-disc leading-relaxed">
+                  {renderInlineText(item, `${block.type}-${index}-${itemIndex}`)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.type === "table") {
+          return (
+            <div key={`${block.type}-${index}`} className="overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950/80">
+              <div className="border-b border-neutral-800 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                Table
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse text-left text-xs text-gray-200 sm:text-sm">
+                  <thead className="bg-neutral-900/80 text-neutral-300">
+                    <tr>
+                      {block.headers.map((header, headerIndex) => (
+                        <th
+                          key={`${header}-${headerIndex}`}
+                          className="whitespace-nowrap border-b border-neutral-800 px-3 py-2 font-semibold"
+                        >
+                          {renderInlineText(header, `${block.type}-${index}-head-${headerIndex}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row, rowIndex) => (
+                      <tr key={`${block.type}-${index}-${rowIndex}`} className="border-t border-neutral-800/70 odd:bg-neutral-900/30">
+                        {row.map((cell, cellIndex) => (
+                          <td
+                            key={`${cell}-${cellIndex}`}
+                            className="align-top border-b border-neutral-800/60 px-3 py-2 text-gray-300"
+                          >
+                            {renderInlineText(cell, `${block.type}-${index}-${rowIndex}-${cellIndex}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={`${block.type}-${index}`} className="overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950/80">
+            <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              <span>{block.language || "Code"}</span>
+              <span>snippet</span>
+            </div>
+            <pre className="overflow-x-auto p-3 text-[12px] leading-relaxed text-gray-100 sm:text-sm">
+              <code className="font-mono">{block.code}</code>
+            </pre>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 export const AiInput003: React.FC<AiInput003Props> = ({
@@ -393,25 +747,31 @@ export const AiInput003: React.FC<AiInput003Props> = ({
                 className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
               >
                 {msg.sender === "user" ? (
-                  <div className="max-w-[72%] rounded-2xl border border-neutral-700/70 bg-neutral-800 px-4 py-3 text-sm leading-relaxed text-neutral-100 shadow-sm transition-all duration-200">
+                  <div className="max-w-[85%] rounded-2xl border border-neutral-700/70 bg-neutral-800 px-3 py-2 text-[13px] leading-relaxed text-neutral-100 shadow-sm transition-all duration-200 sm:max-w-[72%] sm:px-4 sm:py-3 sm:text-sm">
                     {msg.text}
                   </div>
                 ) : (
-                  <div className="max-w-2xl space-y-3 rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-800 to-neutral-900 p-5 text-left shadow-md transition-all duration-200 hover:shadow-lg">
-                    {msg.type === "context" && (
-                      <div className="inline-flex items-center gap-2 rounded-lg border border-green-700 bg-green-900/30 px-3 py-1 text-xs text-green-400">
-                        ✅ Based on repository code
-                      </div>
-                    )}
-                    {msg.type === "inferred" && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                        ⚠ Based on analysis (may not be exact)
-                      </div>
-                    )}
+                  <div className="max-w-[92%] space-y-2.5 rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-800 to-neutral-900 p-3 text-left shadow-md transition-all duration-200 hover:shadow-lg sm:max-w-2xl sm:space-y-3 sm:p-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium uppercase tracking-wide sm:px-2.5 sm:text-[11px] ${getSourceBadgeClass(msg.source)}`}
+                      >
+                        <span aria-hidden="true" className="text-[11px] leading-none sm:text-xs">
+                          {sourceIconMap[msg.source || ""] || "•"}
+                        </span>
+                        {sourceLabelMap[msg.source || ""] || "Unknown Source"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-medium uppercase tracking-wide sm:px-2.5 sm:text-[11px] ${getConfidenceBadgeClass(msg.confidence)}`}
+                      >
+                        <span aria-hidden="true" className="leading-none">●</span>
+                        {msg.confidence || "medium"} confidence
+                      </span>
+                    </div>
+
+                    {getTrustBanner(msg)}
+
                     {renderAnswerContent(msg.text)}
-                    <span className={`text-xs ${msg.confidence === "high" ? "text-green-400" : msg.confidence === "medium" ? "text-yellow-400" : "text-red-400"}`}>
-                      {msg.confidence || "medium"}
-                    </span>
                   </div>
                 )}
 

@@ -16,18 +16,31 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = localStorage.getItem("theme") as Theme;
-    return stored || "system";
+    try {
+      const stored = localStorage.getItem("theme") as Theme;
+      return stored || "system";
+    } catch {
+      return "system";
+    }
   });
 
-  const getSystemTheme = (): "light" | "dark" =>
-    window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const getSystemTheme = (): "light" | "dark" => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return "dark";
+    }
+
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  };
 
   const resolvedTheme = theme === "system" ? getSystemTheme() : theme;
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
-    localStorage.setItem("theme", t);
+    try {
+      localStorage.setItem("theme", t);
+    } catch {
+      // Ignore storage failures and keep the in-memory theme.
+    }
   };
 
   useEffect(() => {
@@ -37,7 +50,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [resolvedTheme]);
 
   useEffect(() => {
-    if (theme !== "system") return;
+    if (theme !== "system" || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = () => {
       const root = document.documentElement;

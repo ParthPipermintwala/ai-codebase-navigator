@@ -4,7 +4,11 @@ import {
   updateRepositorySummary,
   getUserById,
 } from "../services/supabaseService.js";
-import { generateSummary, generateChatAnswer } from "../services/aiService.js";
+import {
+  generateSummary,
+  generateChatAnswer,
+  generateGeneralAnswer,
+} from "../services/aiService.js";
 import { createEmbedding, queryVectors } from "../services/vectorService.js";
 import { getRawFileContent } from "../services/githubService.js";
 
@@ -50,6 +54,38 @@ const PRIORITY_FILE_HINTS = [
   "index.js",
   "package.json",
   "requirements.txt",
+];
+
+const REPO_SCOPE_HINTS = [
+  "this repo",
+  "this repository",
+  "this project",
+  "our code",
+  "in codebase",
+  "in this code",
+  "in this app",
+  "in this file",
+  "module",
+  "folder",
+  "repo",
+  "repository",
+  "codebase",
+  "used in",
+  "where in",
+];
+
+const GENERIC_IMPLEMENTATION_HINTS = [
+  "give me code",
+  "give code",
+  "write code",
+  "implement",
+  "example",
+  "sample",
+  "snippet",
+  "how to",
+  "build ",
+  "create ",
+  "animated component",
 ];
 
 const detectIntent = (question) => {
@@ -119,6 +155,34 @@ const buildQuestionHints = (question, intent = "general") => {
   }
 
   return hints.join(" ");
+};
+
+const isRepoScopedQuestion = (question, intent = "general") => {
+  const normalized = String(question || "").toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (REPO_SCOPE_HINTS.some((hint) => normalized.includes(hint))) {
+    return true;
+  }
+
+  const looksGenericImplementation = GENERIC_IMPLEMENTATION_HINTS.some((hint) =>
+    normalized.includes(hint),
+  );
+
+  if (intent === "general" && looksGenericImplementation) {
+    return false;
+  }
+
+  if (
+    /^(what is|define|explain)\b/.test(normalized) &&
+    !looksGenericImplementation
+  ) {
+    return false;
+  }
+
+  return intent !== "general";
 };
 
 const getStructurePaths = (structure) => {
@@ -378,11 +442,6 @@ const getSummary = async (req, res) => {
       return res.status(404).json({ message: "Repository not found" });
     }
 
-    const user = repoData?.user_id
-      ? await getUserById(String(repoData.user_id))
-      : null;
-    const githubToken = String(user?.github_token || "").trim() || null;
-
     if (repoData.summary && String(repoData.summary).trim()) {
       const existingSummary = String(repoData.summary).trim();
       await setCachedJson(
@@ -537,6 +596,156 @@ const extractSources = (matches = []) => {
   return Array.from(unique);
 };
 
+const inferDatabasesFromRepoData = (repoData = {}, fileMatches = []) => {
+  const hits = new Set();
+  const addHit = (value) => {
+    const normalized = String(value || "").toLowerCase();
+    if (!normalized) return;
+    if (normalized.includes("supabase")) hits.add("Supabase (PostgreSQL)");
+    if (normalized.includes("postgres") || normalized.includes("pg"))
+      hits.add("PostgreSQL");
+    if (normalized.includes("redis")) hits.add("Redis");
+    if (normalized.includes("pinecone") || normalized.includes("pincone"))
+      hits.add("Pinecone (vector database)");
+    if (normalized.includes("mongodb") || normalized.includes("mongoose"))
+      hits.add("MongoDB");
+    if (normalized.includes("sqlite")) hits.add("SQLite");
+    if (normalized.includes("mysql")) hits.add("MySQL");
+  };
+
+  const techStack = Array.isArray(repoData?.tech_stack)
+    ? repoData.tech_stack
+    : [];
+  for (const tech of techStack) addHit(tech);
+
+  const dependencies =
+    repoData?.dependencies && typeof repoData.dependencies === "object"
+      ? repoData.dependencies
+      : {};
+  for (const depName of Object.keys(dependencies)) addHit(depName);
+
+  const structurePaths = getStructurePaths(repoData?.structure);
+  for (const path of structurePaths) addHit(path);
+
+  for (const match of fileMatches) {
+    addHit(match?.filePath);
+    for (const imported of Array.isArray(match?.imports) ? match.imports : []) {
+      addHit(imported);
+    }
+    addHit(match?.content);
+  }
+
+  return Array.from(hits);
+};
+
+const buildDatabaseFallbackAnswer = (repoData = {}, fileMatches = []) => {
+  const databases = inferDatabasesFromRepoData(repoData, fileMatches);
+  if (databases.length === 0) {
+    return "Not found in code.";
+  }
+
+  return [
+    "Summary:",
+    `Detected databases/services: ${databases.join(", ")}.`,
+    "",
+    "Key Points:",
+    ...databases.map((db) => `- ${db}`),
+    "",
+    "Source:",
+    "- tech_stack/dependencies/config files",
+  ].join("\n");
+};
+
+const buildDeterministicAnswer = ({
+  intent = "general",
+  question = "",
+  repoData = {},
+  directMatches = [],
+  vectorMatches = [],
+}) => {
+  if (intent === "db") {
+    return buildDatabaseFallbackAnswer(repoData, directMatches);
+  }
+
+  const techStack = Array.isArray(repoData?.tech_stack)
+    ? repoData.tech_stack
+    : [];
+  const dependencies =
+    repoData?.dependencies && typeof repoData.dependencies === "object"
+      ? repoData.dependencies
+      : {};
+  const dependencyNames = Object.keys(dependencies).slice(0, 15);
+  const structurePaths = getStructurePaths(repoData?.structure).slice(0, 8);
+  const directFiles = Array.isArray(directMatches)
+    ? directMatches
+        .map((item) => item?.filePath)
+        .filter(Boolean)
+        .slice(0, 6)
+    : [];
+  const vectorFiles = extractSources(vectorMatches).slice(0, 6);
+  const sourceFiles = directFiles.length > 0 ? directFiles : vectorFiles;
+
+  if (intent === "dependencies") {
+    return [
+      "Summary:",
+      dependencyNames.length
+        ? `Detected ${dependencyNames.length} dependencies from repository metadata.`
+        : "Not found in code.",
+      "",
+      "Key Points:",
+      ...(dependencyNames.length
+        ? dependencyNames.map((name) => `- ${name}`)
+        : ["- No dependencies found"]),
+      "",
+      "Source:",
+      "- repository dependencies metadata",
+    ].join("\n");
+  }
+
+  if (intent === "structure") {
+    return [
+      "Summary:",
+      structurePaths.length
+        ? "Repository structure inferred from analyzed file paths."
+        : "Not found in code.",
+      "",
+      "Key Points:",
+      ...(structurePaths.length
+        ? structurePaths.map((path) => `- ${path}`)
+        : ["- No structure paths available"]),
+      "",
+      "Source:",
+      "- repository structure metadata",
+    ].join("\n");
+  }
+
+  const summaryLine =
+    String(repoData?.summary || "").trim() || "Not found in code.";
+
+  return [
+    "Summary:",
+    summaryLine,
+    "",
+    "Key Points:",
+    `- Intent: ${intent || "general"}`,
+    techStack.length > 0
+      ? `- Tech stack: ${techStack.join(", ")}`
+      : "- Tech stack: Not found in code.",
+    sourceFiles.length > 0
+      ? `- Relevant files: ${sourceFiles.join(", ")}`
+      : "- Relevant files: Not found in code.",
+    dependencyNames.length > 0
+      ? `- Dependencies sample: ${dependencyNames.slice(0, 5).join(", ")}`
+      : "- Dependencies: Not found in code.",
+    question ? `- Question: ${question}` : "",
+    "",
+    "Source:",
+    "- repository metadata and indexed context",
+  ]
+    .filter(Boolean)
+    .join("\n");
+};
+
 const chatWithRepo = async (req, res) => {
   try {
     const { repoId } = req.params || {};
@@ -552,7 +761,8 @@ const chatWithRepo = async (req, res) => {
 
     const normalizedQuestion = question.trim();
     const intent = detectIntent(normalizedQuestion);
-    const cacheKey = `repo:chat:${repoId}:${encodeURIComponent(normalizedQuestion)}`;
+    const repoScoped = isRepoScopedQuestion(normalizedQuestion, intent);
+    const cacheKey = `repo:chat:v3:${repoId}:${encodeURIComponent(normalizedQuestion)}`;
     const cached = await getCachedJson(cacheKey);
     if (cached?.answer) {
       return res.status(200).json({
@@ -561,10 +771,63 @@ const chatWithRepo = async (req, res) => {
       });
     }
 
-    const repoData = await getRepositoryForAi(String(repoId));
-    if (!repoData) {
+    let repoData = await getRepositoryForAi(String(repoId));
+    if (!repoData && repoScoped) {
       return res.status(404).json({ message: "Repository not found" });
     }
+
+    if (!repoData) {
+      repoData = {
+        structure: [],
+        tech_stack: [],
+        dependencies: {},
+        summary: "",
+      };
+    }
+
+    if (!repoScoped) {
+      let answer = "";
+      try {
+        answer = await generateGeneralAnswer(normalizedQuestion, {
+          techStack: repoData?.tech_stack || [],
+        });
+      } catch (error) {
+        console.warn("[chatWithRepo] general LLM answer failed", {
+          repoId,
+          message: error?.message || String(error),
+        });
+        answer =
+          "Summary:\nI could not reach the language model for a full answer.\n\nKey Points:\n- Please retry in a moment.\n- If you want code, include stack and component requirements.\n\nSource:\n- fallback";
+      }
+
+      const payload = {
+        answer:
+          normalizeAnswerText(answer) || "No clear answer could be generated.",
+        confidence: "medium",
+        type: "inferred",
+        source: "general_llm",
+      };
+      await setCachedJson(cacheKey, payload, CACHE_TTL_SECONDS);
+      return res.status(200).json(payload);
+    }
+
+    // Deterministic fast path for DB questions to avoid external provider failures.
+    if (intent === "db") {
+      const answer = buildDatabaseFallbackAnswer(repoData, []);
+      const payload = {
+        answer,
+        confidence: answer === "Not found in code." ? "low" : "high",
+        type: "context",
+        source: "deterministic",
+      };
+      await setCachedJson(cacheKey, payload, CACHE_TTL_SECONDS);
+      return res.status(200).json(payload);
+    }
+
+    const user = repoData?.user_id
+      ? await getUserById(String(repoData.user_id))
+      : null;
+    const githubToken = String(user?.github_token || "").trim() || null;
 
     const directFileSearch = await buildFileAwareContext(
       repoData,
@@ -577,9 +840,18 @@ const chatWithRepo = async (req, res) => {
     let matches = [];
     let pineconeContext = "";
     if (!hasDirectContext) {
-      const questionEmbedding = await createEmbedding(normalizedQuestion);
-      matches = await queryVectors(String(repoId), questionEmbedding, 2);
-      pineconeContext = buildContextFromMatches(matches);
+      try {
+        const questionEmbedding = await createEmbedding(normalizedQuestion);
+        matches = await queryVectors(String(repoId), questionEmbedding, 2);
+        pineconeContext = buildContextFromMatches(matches);
+      } catch (error) {
+        console.warn("[chatWithRepo] vector context unavailable", {
+          repoId,
+          message: error?.message || String(error),
+        });
+        matches = [];
+        pineconeContext = "";
+      }
     }
 
     const hasPineconeContext = Boolean(pineconeContext);
@@ -629,21 +901,56 @@ const chatWithRepo = async (req, res) => {
           String(repoData?.summary || "").trim() || "No summary available.",
         ].join("\n");
 
-    const answerText = await generateChatAnswer(
-      normalizedQuestion,
-      context,
-      {
-        structure: repoData?.structure,
-        tech_stack: repoData?.tech_stack || [],
-        dependencies: repoData?.dependencies || {},
-        summary: repoData?.summary || "",
-      },
-      buildQuestionHints(normalizedQuestion, intent),
-    );
+    let answerText = "";
+    let aiFallbackUsed = false;
+    try {
+      answerText = await generateChatAnswer(
+        normalizedQuestion,
+        context,
+        {
+          structure: repoData?.structure,
+          tech_stack: repoData?.tech_stack || [],
+          dependencies: repoData?.dependencies || {},
+          summary: repoData?.summary || "",
+        },
+        buildQuestionHints(normalizedQuestion, intent),
+      );
+    } catch (aiError) {
+      aiFallbackUsed = true;
+      answerText = buildDeterministicAnswer({
+        intent,
+        question: normalizedQuestion,
+        repoData,
+        directMatches: directFileSearch.matches || [],
+        vectorMatches: matches || [],
+      });
+      console.warn("[chatWithRepo] AI fallback used", {
+        repoId,
+        intent,
+        message: aiError?.message || String(aiError),
+      });
+    }
+
+    if (!answerText || !String(answerText).trim()) {
+      aiFallbackUsed = true;
+      answerText = buildDeterministicAnswer({
+        intent,
+        question: normalizedQuestion,
+        repoData,
+        directMatches: directFileSearch.matches || [],
+        vectorMatches: matches || [],
+      });
+    }
 
     const normalizedAnswer =
       normalizeAnswerText(answerText || "") ||
-      "No clear answer could be generated.";
+      buildDeterministicAnswer({
+        intent,
+        question: normalizedQuestion,
+        repoData,
+        directMatches: directFileSearch.matches || [],
+        vectorMatches: matches || [],
+      });
     const confidence = techQuestion
       ? hasCodeContext ||
         (Array.isArray(repoData?.tech_stack) && repoData.tech_stack.length > 0)
@@ -657,8 +964,9 @@ const chatWithRepo = async (req, res) => {
       type = "context";
     }
 
-    const source =
-      techQuestion && hasTechStack
+    const source = aiFallbackUsed
+      ? "deterministic"
+      : techQuestion && hasTechStack
         ? "tech_stack"
         : hasDirectContext
           ? "file_match"

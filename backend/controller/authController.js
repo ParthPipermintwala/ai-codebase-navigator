@@ -73,6 +73,7 @@ const ensureUserByEmail = async ({ email, name }) => {
         name: normalizedName,
         email: normalizedEmail,
         password: hashedPassword,
+        is_subscribed: false,
       },
     ])
     .select("id, name, email")
@@ -147,7 +148,14 @@ export const register = async (req, res) => {
     // Insert user
     const { data, error } = await supabase
       .from("users")
-      .insert([{ name: name.trim(), email, password: hashedPassword }])
+      .insert([
+        {
+          name: name.trim(),
+          email,
+          password: hashedPassword,
+          is_subscribed: false,
+        },
+      ])
       .select("id, name, email")
       .single();
 
@@ -220,46 +228,54 @@ export const googleLogin = async (req, res) => {
         .json({ message: "Google OAuth is not configured" });
     }
 
-    const { code } = req.body || {};
-    if (!code || typeof code !== "string") {
-      return res
-        .status(400)
-        .json({ message: "Google authorization code is required" });
-    }
+    const { code, accessToken: directAccessToken } = req.body || {};
+    let accessToken =
+      typeof directAccessToken === "string" ? directAccessToken.trim() : "";
 
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code: code.trim(),
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: GOOGLE_REDIRECT_URI,
-        grant_type: "authorization_code",
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      let errorMessage = "Failed to exchange Google authorization code";
-
-      try {
-        const parsed = JSON.parse(errorText);
-        const reason = parsed?.error || parsed?.error_description;
-        if (reason) {
-          errorMessage = `Failed to exchange Google authorization code: ${reason}`;
-        }
-      } catch {
-        if (errorText) {
-          errorMessage = `Failed to exchange Google authorization code: ${errorText}`;
-        }
+    if (!accessToken) {
+      if (!code || typeof code !== "string") {
+        return res
+          .status(400)
+          .json({
+            message: "Google authorization code or access token is required",
+          });
       }
 
-      return res.status(401).json({ message: errorMessage });
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code: code.trim(),
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: GOOGLE_REDIRECT_URI,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        let errorMessage = "Failed to exchange Google authorization code";
+
+        try {
+          const parsed = JSON.parse(errorText);
+          const reason = parsed?.error || parsed?.error_description;
+          if (reason) {
+            errorMessage = `Failed to exchange Google authorization code: ${reason}`;
+          }
+        } catch {
+          if (errorText) {
+            errorMessage = `Failed to exchange Google authorization code: ${errorText}`;
+          }
+        }
+
+        return res.status(401).json({ message: errorMessage });
+      }
+
+      const tokenData = await tokenResponse.json();
+      accessToken = String(tokenData?.access_token || "").trim();
     }
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData?.access_token;
     if (!accessToken) {
       return res
         .status(401)
@@ -544,7 +560,6 @@ export const verifyGithubToken = async (req, res) => {
 
     const trimmedToken = token.trim();
 
-    // Validate token is not empty
     if (!trimmedToken) {
       return res.status(400).json({
         message: "Token cannot be empty",
@@ -552,7 +567,6 @@ export const verifyGithubToken = async (req, res) => {
       });
     }
 
-    // Validate format
     if (
       !trimmedToken.startsWith("ghp_") &&
       !trimmedToken.startsWith("github_pat_")
@@ -563,7 +577,6 @@ export const verifyGithubToken = async (req, res) => {
       });
     }
 
-    // Validate token length
     if (trimmedToken.length < 20) {
       return res.status(400).json({
         message: "Token appears to be incomplete",
@@ -571,7 +584,6 @@ export const verifyGithubToken = async (req, res) => {
       });
     }
 
-    // Test token by making a simple API call
     try {
       const response = await githubRequest("/user", trimmedToken);
 

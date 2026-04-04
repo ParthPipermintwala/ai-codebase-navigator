@@ -19,6 +19,8 @@ import Tour from "./pages/Tour";
 import Impact from "./pages/Impact";
 import Docs from "./pages/Docs";
 import SettingsPage from "./pages/SettingsPage";
+import Subscription from "./pages/Subscription";
+import SubscriptionSuccess from "./pages/SubscriptionSuccess";
 import Login from "./pages/Login";
 import CreateAccount from "./pages/CreateAccount";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -41,6 +43,14 @@ const App = () => (
                 <Route path="/register" element={<CreateAccount />} />
                 <Route path="/create-account" element={<CreateAccount />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route
+                  path="/pricing"
+                  element={
+                    <ProtectedRoute>
+                      <Subscription />
+                    </ProtectedRoute>
+                  }
+                />
 
                 <Route
                   element={
@@ -53,10 +63,55 @@ const App = () => (
                   <Route path="/analyze" element={<Analyze />} />
                   <Route path="/repository/:repoId" element={<Repository />} />
                   <Route path="/map" element={<RepoMap />} />
-                  <Route path="/chat" element={<Chat />} />
+                  <Route
+                    path="/chat"
+                    element={
+                      <ProtectedRoute>
+                        <Chat />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/dependencies" element={<Dependencies />} />
-                  <Route path="/tour" element={<Tour />} />
-                  <Route path="/impact" element={<Impact />} />
+                  <Route
+                    path="/subscription"
+                    element={
+                      <ProtectedRoute>
+                        <Subscription />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/subscription/success"
+                    element={
+                      <ProtectedRoute>
+                        <SubscriptionSuccess />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/success"
+                    element={
+                      <ProtectedRoute>
+                        <SubscriptionSuccess />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tour"
+                    element={
+                      <ProtectedRoute requiresSubscription>
+                        <Tour />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/impact"
+                    element={
+                      <ProtectedRoute requiresSubscription>
+                        <Impact />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="/docs" element={<Docs />} />
                   <Route path="/settings" element={<SettingsPage />} />
                 </Route>

@@ -810,7 +810,7 @@ const getRepoImpact = async (req, res) => {
       });
     }
 
-    const cacheKey = `repo:impact:${repoId}:${target.toLowerCase()}`;
+    const cacheKey = `repo:impact:v2:${repoId}:${target.toLowerCase()}`;
     const cached = await getCachedJson(cacheKey);
     if (cached?.target && Array.isArray(cached?.impact)) {
       return res.status(200).json({
@@ -826,7 +826,7 @@ const getRepoImpact = async (req, res) => {
     return res.status(200).json({
       success: true,
       impact,
-      source: "llm",
+      source: impact?.source || "analysis",
     });
   } catch (error) {
     const message = error?.message || "Failed to analyze repository impact";
@@ -835,7 +835,9 @@ const getRepoImpact = async (req, res) => {
       normalizedMessage.includes("not found") ||
       normalizedMessage.includes("repository")
         ? 404
-        : Number(error?.statusCode) || 500;
+        : normalizedMessage.includes("target not found")
+          ? 400
+          : Number(error?.statusCode) || 500;
 
     console.error("[getRepoImpact] error", {
       message,
@@ -852,24 +854,16 @@ const getRepoImpact = async (req, res) => {
       });
     }
 
-    const target = String(req?.body?.target || "").trim() || "unknown";
-    const fallbackImpact = {
-      target,
-      impact: [
-        {
-          area: "Core",
-          description:
-            "Impact analysis is temporarily unavailable. Retry in a moment.",
-          severity: "medium",
-          files: [],
-        },
-      ],
-    };
+    if (statusCode === 400) {
+      return res.status(400).json({
+        success: false,
+        message,
+      });
+    }
 
-    return res.status(200).json({
-      success: true,
-      impact: fallbackImpact,
-      source: "fallback",
+    return res.status(statusCode).json({
+      success: false,
+      message,
     });
   }
 };

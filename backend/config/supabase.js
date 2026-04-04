@@ -1,19 +1,15 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const supabaseUrl = String(process.env.SUPABASE_URL || "").trim();
+const supabaseKey = String(process.env.SUPABASE_KEY || "").trim();
 
-if (!supabase) {
-  console.error("Failed to create Supabase client");
-  process.exit(1);
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("SUPABASE_URL and SUPABASE_KEY must be set in environment");
 }
-else{
-  console.log("Supabase client created successfully");
-}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default supabase;

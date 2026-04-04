@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Code2, Github, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { z } from "zod";
 import { useAuth } from "@/context/AuthContext";
-import { getGithubLoginUrl, loginWithGoogleCode } from "@/services/api";
+import { getGithubLoginUrl, loginWithGoogleAccessToken } from "@/services/api";
 
 const loginSchema = z.object({
   email: z
@@ -62,19 +62,19 @@ const Login = () => {
   }, [location.pathname, location.search, location.state, navigate]);
 
   const googleLogin = useGoogleLogin({
-    flow: "auth-code",
+    flow: "implicit",
     ux_mode: "popup",
     scope: "openid email profile",
     onSuccess: async (response) => {
-      if (!response?.code) {
-        setErrors({ general: "Google login failed: authorization code missing" });
+      if (!response?.access_token) {
+        setErrors({ general: "Google login failed: access token missing" });
         return;
       }
 
       try {
         setSocialLoading("google");
         setErrors({});
-        await loginWithGoogleCode(response.code);
+        await loginWithGoogleAccessToken(response.access_token);
         const redirectTo = (location.state as any)?.from || "/analyze";
         navigate(redirectTo, { replace: true });
       } catch (error) {

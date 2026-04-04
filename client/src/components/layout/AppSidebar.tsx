@@ -9,9 +9,12 @@ import {
   FileText,
   Settings,
   Code2,
+  Crown,
+  Lock,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -35,18 +38,21 @@ const mainItems = [
 
 const analysisItems = [
   { title: "Dependencies", url: "/dependencies", icon: Package },
-  { title: "Codebase Tour", url: "/tour", icon: Compass },
-  { title: "Impact Analysis", url: "/impact", icon: Zap },
+  { title: "Codebase Tour", url: "/tour", icon: Compass, premium: true },
+  { title: "Impact Analysis", url: "/impact", icon: Zap, premium: true },
 ];
 
 const otherItems = [
   { title: "Documentation", url: "/docs", icon: FileText },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Subscription", url: "/subscription", icon: Crown },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
+  const { user } = useAuth();
+  const isSubscribed = Boolean(user?.isSubscribed);
 
   const renderItems = (items: typeof mainItems) =>
     items.map((item) => (
@@ -60,6 +66,12 @@ export function AppSidebar() {
           >
             <item.icon className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="text-sm">{item.title}</span>}
+            {!collapsed && "premium" in item && item.premium && !isSubscribed && (
+              <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+                <Lock className="h-3 w-3" />
+                Pro
+              </span>
+            )}
           </NavLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -111,7 +123,18 @@ export function AppSidebar() {
 
       <SidebarFooter className="px-4 py-3 border-t border-border">
         {!collapsed && (
-          <p className="text-xs text-muted-foreground font-mono">v1.0.0</p>
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground font-mono">v1.0.0</p>
+            {!isSubscribed && (
+              <NavLink
+                to="/subscription"
+                className="flex items-center gap-2 rounded-lg border border-border/70 bg-secondary/60 px-3 py-2 text-xs text-foreground hover:bg-secondary"
+              >
+                <Crown className="h-3.5 w-3.5 text-amber-500" />
+                Unlock Pro features
+              </NavLink>
+            )}
+          </div>
         )}
       </SidebarFooter>
     </Sidebar>

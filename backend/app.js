@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import repoRouter from "./routes/repoRoutes.js";
 import authRouter from "./routes/authRoutes.js";
+import paymentRouter from "./routes/payment.routes.js";
 import { authMiddleware } from "./middleware/authMiddleware.js";
 import { aiRouter, chatRouter } from "./routes/aiRoutes.js";
 
@@ -13,6 +14,8 @@ app.use(
     origin: [
       "http://localhost:8080",
       "http://127.0.0.1:8080",
+      "http://localhost:8081",
+      "http://127.0.0.1:8081",
       "http://localhost:5173",
       "http://127.0.0.1:5173",
     ],
@@ -20,6 +23,7 @@ app.use(
   }),
 );
 app.use(cookieParser());
+app.use("/api/payment", paymentRouter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
