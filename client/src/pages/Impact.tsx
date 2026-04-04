@@ -268,29 +268,29 @@ const Impact = () => {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
+    <div className="mx-auto max-w-7xl space-y-5 px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
       <motion.section
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[2rem] border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl"
+        className="relative overflow-hidden rounded-[1.5rem] border border-border/60 bg-gradient-to-br from-card via-background to-card shadow-xl sm:rounded-[2rem]"
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.16),transparent_32%),radial-gradient(circle_at_bottom_left,hsl(173_80%_50%/0.14),transparent_40%)]" />
 
-        <div className="relative grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-5 p-6 sm:p-8 xl:p-10">
+        <div className="relative grid gap-0 xl:grid-cols-[1.1fr_0.9fr] xl:gap-8">
+          <div className="space-y-5 p-5 sm:p-6 md:p-8 xl:p-10">
             <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300">
               <Sparkles className="h-3.5 w-3.5" />
               Live simulation
             </div>
 
-            <div className="space-y-3 max-w-2xl">
-              <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+            <div className="max-w-2xl space-y-3">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
                 What happens if I change this?
               </h1>
-              <p className="text-base leading-7 text-muted-foreground sm:text-lg">
+              <p className="text-sm leading-7 text-muted-foreground sm:text-base lg:text-lg">
                 Select a file or module and we simulate the blast radius visually: affected files, cascade chain, and a risk percentage.
               </p>
-              <p className="text-sm leading-7 text-muted-foreground">
+              <p className="text-xs leading-6 text-muted-foreground sm:text-sm sm:leading-7">
                 We don’t just explain code — we predict the effect of changes across the system.
               </p>
             </div>
@@ -310,7 +310,7 @@ const Impact = () => {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <input
                 value={target}
                 onChange={(event) => setTarget(event.target.value)}
@@ -320,13 +320,13 @@ const Impact = () => {
                   }
                 }}
                 placeholder="Enter file/module/function (e.g. auth.js)"
-                className="h-12 rounded-2xl border border-border/70 bg-background/90 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-cyan-500"
+                className="h-12 w-full rounded-2xl border border-border/70 bg-background/90 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-cyan-500"
               />
               <button
                 type="button"
                 onClick={onAnalyzeImpact}
                 disabled={loading || !repoId}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-400 px-5 text-sm font-medium text-black transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-400 px-5 text-sm font-medium text-black transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
                 {loading ? "Simulating..." : "Simulate impact"}
@@ -434,20 +434,20 @@ const Impact = () => {
       )}
 
       {!loading && result && (
-        <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr] xl:gap-5">
           <motion.section
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
-            <div className="rounded-2xl border border-border/60 bg-card p-5">
-              <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+              <div className="flex items-start gap-3 sm:items-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <Layers3 className="h-5 w-5" />
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Affect map</p>
-                  <h3 className="text-lg font-semibold text-foreground">Affected files highlighted</h3>
+                  <h3 className="text-base font-semibold text-foreground sm:text-lg">Affected files highlighted</h3>
                 </div>
               </div>
 
@@ -462,7 +462,7 @@ const Impact = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="rounded-2xl border border-border/60 bg-background/80 p-4"
+                      className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-semibold text-foreground">{item.area}</h4>
@@ -485,14 +485,14 @@ const Impact = () => {
                           files.slice(0, 4).map((filePath, fileIndex) => (
                             <div
                               key={`${filePath}-${fileIndex}`}
-                              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${
+                              className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
                                 fileIndex === 0
                                   ? "border-cyan-500/25 bg-cyan-500/10 text-cyan-200"
                                   : "border-border/60 bg-muted/20 text-muted-foreground"
                               }`}
                             >
                               <FileCode2 className="h-3.5 w-3.5 shrink-0" />
-                              <span className="break-all font-mono">{filePath}</span>
+                              <span className="min-w-0 break-all font-mono leading-5">{filePath}</span>
                             </div>
                           ))
                         ) : (
@@ -501,9 +501,9 @@ const Impact = () => {
                       </div>
 
                       {topFile ? (
-                        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border/60 bg-secondary/60 px-3 py-1 text-[11px] text-muted-foreground">
+                        <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-border/60 bg-secondary/60 px-3 py-1 text-[11px] text-muted-foreground">
                           <ArrowRight className="h-3 w-3" />
-                          Primary ripple: {topFile}
+                          <span className="min-w-0 truncate">Primary ripple: {topFile}</span>
                         </div>
                       ) : null}
                     </motion.article>
@@ -518,14 +518,14 @@ const Impact = () => {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
-            <div className="rounded-2xl border border-border/60 bg-card p-5">
-              <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+              <div className="flex items-start gap-3 sm:items-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
                   <BarChart3 className="h-5 w-5" />
                 </div>
                 <div>
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Risk detail</p>
-                  <h3 className="text-lg font-semibold text-foreground">Why this change is risky</h3>
+                  <h3 className="text-base font-semibold text-foreground sm:text-lg">Why this change is risky</h3>
                 </div>
               </div>
 
@@ -533,13 +533,13 @@ const Impact = () => {
                 {normalizedImpact.map((item, index) => {
                   const fileTotal = Array.isArray(item.files) ? item.files.length : 0;
                   return (
-                    <div key={`${item.key}-risk`} className="rounded-2xl border border-border/60 bg-background/80 p-4">
-                      <div className="flex items-center justify-between gap-3">
+                    <div key={`${item.key}-risk`} className="rounded-2xl border border-border/60 bg-background/80 p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-medium text-foreground">{item.area}</p>
                           <p className="text-xs text-muted-foreground">{fileTotal} affected file{fileTotal === 1 ? "" : "s"}</p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">Risk contribution</p>
                           <p className="text-lg font-semibold text-foreground">{riskBreakdown[index] || 0}%</p>
                         </div>
