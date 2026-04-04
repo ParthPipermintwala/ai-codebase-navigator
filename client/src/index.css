@@ -108,6 +108,7 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: "Inter", system-ui, sans-serif;
+    overflow-x: hidden;
   }
   .dark body {
     background: linear-gradient(
@@ -189,6 +190,10 @@
   width: 8px;
 }
 
+::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+
 ::-webkit-scrollbar-track {
   background: hsl(224 58% 6%);
 }
@@ -205,4 +210,9 @@
 html {
   scrollbar-width: thin;
   scrollbar-color: hsl(221 24% 24%) hsl(224 58% 6%);
+  overflow-x: hidden;
+}
+
+#root {
+  overflow-x: hidden;
 }
