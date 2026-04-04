@@ -12,9 +12,26 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "postmessage";
 const GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
 const GITHUB_OAUTH_CLIENT_SECRET = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+const normalizeGithubRedirectUri = (value) => {
+  const fallback = "http://localhost:3000/api/auth/github/callback";
+  const rawValue = String(value || "").trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(rawValue);
+    if (parsed.pathname === "/auth/github/callback") {
+      parsed.pathname = "/api/auth/github/callback";
+    }
+    return parsed.toString();
+  } catch {
+    return fallback;
+  }
+};
 const GITHUB_OAUTH_REDIRECT_URI =
-  process.env.GITHUB_OAUTH_REDIRECT_URI ||
-  "http://localhost:3000/api/auth/github/callback";
+  normalizeGithubRedirectUri(process.env.GITHUB_OAUTH_REDIRECT_URI);
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8080";
 
 if (!JWT_SECRET || !COOKIE_SECRET) {
