@@ -49,14 +49,39 @@ Instead of manually reading file-by-file, it helps you:
 ## Animated Flow
 
 ```mermaid
-flowchart LR
-		A[Paste GitHub URL] --> B[Analyze Repository]
-		B --> C[Extract Structure + Dependencies]
-		C --> D[Index Context]
-		D --> E[AI Chat]
-		D --> F[Impact Analysis]
-		D --> G[Bug Detector]
-		D --> H[Map + Tour]
+flowchart TD
+	A[User enters GitHub repository URL]
+	A --> B[Repository analysis pipeline]
+
+	subgraph INGEST[Ingestion and Understanding]
+		direction TB
+		B --> C[Fetch metadata and repository tree]
+		C --> D[Extract dependencies and structure]
+		D --> E[Generate embeddings and index context]
+	end
+
+	subgraph INTEL[AI Intelligence Layer]
+		direction TB
+		E --> F[Context retrieval engine]
+		F --> G[Repository-aware AI responses]
+	end
+
+	subgraph OUTPUT[Developer Outputs]
+		direction LR
+		G --> H[AI Chat]
+		G --> I[Impact Analysis]
+		G --> J[Bug Detector]
+		G --> K[Repository Map]
+		G --> L[Guided Tour]
+	end
+
+	classDef ingest fill:#0f172a,stroke:#2ec4b6,color:#e2e8f0,stroke-width:1px;
+	classDef intel fill:#111827,stroke:#22d3ee,color:#e2e8f0,stroke-width:1px;
+	classDef output fill:#0b132b,stroke:#14b8a6,color:#e2e8f0,stroke-width:1px;
+
+	class B,C,D,E ingest;
+	class F,G intel;
+	class H,I,J,K,L output;
 ```
 
 ---
